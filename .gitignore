@@ -1,0 +1,35 @@
+*.log
+.DS_Store
+.env
+.env.backup
+.env.production
+
+# `php artisan config:cache` writes every resolved config value here — which
+# includes the full contents of .env: APP_KEY, database credentials, mail and
+# AWS secrets. Protecting .env alone is not enough if this file can be
+# committed, so it is excluded explicitly rather than left to chance.
+/bootstrap/cache/*.php
+
+.phpactor.json
+.phpunit.result.cache
+/.codex
+/.cursor/
+/.idea
+/.nova
+/.phpunit.cache
+/.vscode
+/.zed
+/auth.json
+/node_modules
+/public/build
+/public/fonts-manifest.dev.json
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/storage/app/firebase/
+/vendor
+_ide_helper.php
+Homestead.json
+Homestead.yaml
+Thumbs.db
