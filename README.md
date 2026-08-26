@@ -159,6 +159,26 @@ connection rather than an error.
 
 Every broadcast channel is private and authorised in `routes/channels.php`.
 
+**In production**, Reverb listens on `REVERB_PORT` (8080 by default) while
+browsers and phones connect to your domain on 443. The reverse proxy has to
+forward that route *and* pass the WebSocket upgrade headers — without them the
+handshake is rejected even though Reverb itself is running fine. For nginx:
+
+```nginx
+location /app {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 60s;
+}
+```
+
+Then set `REVERB_SCHEME=https` and `REVERB_PORT=443` in the clients'
+configuration, so they connect through the proxy rather than to port 8080
+directly.
+
 ### File uploads
 
 Allowed types and size limits live in `app/Support/UploadRules.php` — a single
@@ -189,10 +209,10 @@ against a real MySQL database for that.
 
 - [ ] `APP_ENV=production`, `APP_DEBUG=false`
 - [ ] `LOG_LEVEL=warning`
+- [ ] `FRONTEND_URL` points at the real dashboard domain — password reset links are built from it
 - [ ] Real SMTP credentials configured
-- [ ] Queue worker running under a process supervisor (Supervisor / systemd), **not** `queue:work` in a terminal
-- [ ] Reverb running under the same supervisor
-- [ ] Cron entry: `* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1`
+- [ ] `./supervisor/setup.sh` has been run — installs the queue worker and Reverb under Supervisor and adds the scheduler cron entry
+- [ ] Reverse proxy forwards the Reverb route with WebSocket upgrade headers (see below)
 - [ ] `php artisan storage:link` has been run
 - [ ] `php artisan config:cache && php artisan route:cache`
 - [ ] Database backups scheduled
