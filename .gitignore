@@ -10,6 +10,10 @@
 # committed, so it is excluded explicitly rather than left to chance.
 /bootstrap/cache/*.php
 
+# Database dumps: every contract, client, payment and password hash in one
+# file. Never version-controlled.
+/storage/app/backups
+
 .phpactor.json
 .phpunit.result.cache
 /.codex

@@ -25,6 +25,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Dump Binary Path
+    |--------------------------------------------------------------------------
+    |
+    | Directory containing mysqldump / pg_dump, used by `php artisan db:backup`.
+    | Leave empty to rely on the system PATH, which is the normal case on a
+    | Linux server. Set it when the client tools are installed but not on the
+    | PATH — WAMP and XAMPP both do this, e.g.
+    | C:\wamp64\bin\mysql\mysql8.0.31\bin
+    |
+    */
+
+    'dump_binary_path' => env('DB_DUMP_BINARY_PATH', ''),
+
+    /*
+    |--------------------------------------------------------------------------
     | Database Connections
     |--------------------------------------------------------------------------
     |

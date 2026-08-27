@@ -114,6 +114,50 @@ Defined in `routes/console.php`:
 | `meetings:update-statuses` | every 5 minutes  |
 | `payments:send-reminders`  | daily 09:00      |
 | `birthdays:send-reminders` | daily 09:00      |
+| `db:backup`                | daily 03:00      |
+
+---
+
+## Backups
+
+```bash
+php artisan db:backup                 # database + uploaded files
+php artisan db:backup --database-only # skip the files
+php artisan db:backup --keep=30       # retain 30 archives instead of 14
+```
+
+Writes a timestamped `.zip` to `storage/app/backups` containing:
+
+```
+database.sql   # mysqldump / pg_dump output
+files/         # everything under storage/app/public
+```
+
+**Both halves are needed.** The database stores file *paths*; the signed
+contract PDFs, signature images and payment proofs themselves live on disk. A
+database-only restore leaves every record intact and every document link
+broken.
+
+`mysqldump` must be on the server's `PATH` — it ships with the MySQL client
+tools, which are not always installed alongside the server.
+
+### Restoring
+
+```bash
+unzip shadapp-2026-08-26_030000.zip -d restore/
+mysql -u root -p shadapp < restore/database.sql
+cp -r restore/files/* storage/app/public/
+php artisan storage:link   # if the symlink is missing on the new machine
+```
+
+The dump includes `DROP TABLE IF EXISTS`, so restoring over an existing
+database replaces it rather than failing on the first conflict.
+
+> `storage/app/backups` is gitignored and sits outside the web root, so
+> archives are never served or committed. They still contain every record in
+> the system — treat them as production data, and copy them somewhere off the
+> server. A backup that only exists on the machine it protects is not a
+> backup.
 
 ---
 
