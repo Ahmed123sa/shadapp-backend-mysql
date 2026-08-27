@@ -27,13 +27,18 @@ jobs:
           key: composer-${{ hashFiles('composer.lock') }}
           restore-keys: composer-
 
+      # See the matching comment in the Postgres copy's CI — this has to
+      # happen before `composer install`, since its post-autoload-dump hook
+      # boots the framework and needs a real BROADCAST_CONNECTION from .env
+      # (missing entirely, it defaults to 'reverb' and fails on a null key).
+      - name: Create .env
+        run: cp .env.example .env
+
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
 
-      - name: Prepare environment
-        run: |
-          cp .env.example .env
-          php artisan key:generate
+      - name: Generate app key
+        run: php artisan key:generate
 
       # phpunit.xml forces DB_CONNECTION=sqlite + DB_DATABASE=:memory: for the
       # whole suite, so no MySQL service container is needed here even though
