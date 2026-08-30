@@ -34,15 +34,66 @@ class PaymentController extends Controller
         $this->authorize('viewAny', Payment::class);
 
         $user = $request->user();
-        $query = Payment::with(['workspace.client', 'contract']);
+        $query = Payment::with(['workspace.client', 'workspace.manager', 'contract']);
 
         if ($user->isAccountManager()) {
             $clientIds = $user->managedClients()->pluck('id');
             $query->whereIn('client_id', $clientIds);
         }
 
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('currency')) {
+            $query->where('currency', $request->currency);
+        }
+
+        if ($request->filled('client_id')) {
+            $query->where('client_id', $request->client_id);
+        }
+
+        if ($request->filled('manager_id')) {
+            $query->whereHas('workspace', function ($q) use ($request) {
+                $q->where('manager_id', $request->manager_id);
+            });
+        }
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('amount', 'like', "%{$search}%")
+                  ->orWhereHas('workspace.client', function ($cq) use ($search) {
+                      $cq->where('company_name', 'like', "%{$search}%")
+                         ->orWhere('contact_person', 'like', "%{$search}%");
+                  })
+                  ->orWhereHas('contract', function ($kq) use ($search) {
+                      $kq->where('title', 'like', "%{$search}%");
+                  });
+            });
+        }
+
+        $payments = (clone $query)->latest()->paginate($request->input('per_page', 30));
+
+        $stats = [
+            'total_count' => (clone $query)->count(),
+            'approved_count' => (clone $query)->where('status', 'approved')->count(),
+            'pending_count' => (clone $query)->where('status', 'pending')->count(),
+            'approved_total_sar' => (clone $query)->where('status', 'approved')->where('currency', 'SAR')->sum('amount'),
+            'approved_total_usd' => (clone $query)->where('status', 'approved')->where('currency', 'USD')->sum('amount'),
+        ];
+
         return response()->json([
-            'payments' => $query->latest()->paginate($request->input('per_page', 30)),
+            'payments' => $payments,
+            'stats' => $stats,
         ]);
     }
 
