@@ -30,6 +30,8 @@ class ContractController extends Controller
             ->latest()
             ->paginate(30);
 
+        $this->ensureFreshPdfs($contracts->getCollection());
+
         return response()->json(['contracts' => $contracts]);
     }
 
@@ -146,7 +148,18 @@ class ContractController extends Controller
     {
         $this->authorize('viewAny', Contract::class);
 
-        return response()->json(['contracts' => $workspace->contracts()->with('clauses', 'requiredDocuments.files')->latest()->paginate(30)]);
+        $contracts = $workspace->contracts()->with('clauses', 'requiredDocuments.files')->latest()->paginate(30);
+        $this->ensureFreshPdfs($contracts->getCollection());
+
+        return response()->json(['contracts' => $contracts]);
+    }
+
+    private function ensureFreshPdfs($contracts): void
+    {
+        $service = app(\App\Services\ContractPdfService::class);
+        foreach ($contracts as $contract) {
+            $service->ensureFreshPdf($contract);
+        }
     }
 
     public function store(StoreContractRequest $request, Workspace $workspace): JsonResponse
@@ -213,6 +226,8 @@ class ContractController extends Controller
     public function show(Request $request, Contract $contract): JsonResponse
     {
         $this->authorize('view', $contract);
+
+        app(\App\Services\ContractPdfService::class)->ensureFreshPdf($contract);
 
         return response()->json(['contract' => $contract->load('clauses', 'workspace', 'requiredDocuments')]);
     }

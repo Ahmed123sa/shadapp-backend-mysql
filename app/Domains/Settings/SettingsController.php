@@ -26,14 +26,20 @@ class SettingsController extends Controller
         }
 
         $validated = $request->validate([
-            'key' => 'required|string|in:corporate_tax_percentage',
-            'value' => 'required|numeric|min:0|max:100',
+            'key' => 'required|string|in:corporate_tax_percentage,show_contract_dates',
+            'value' => 'required',
         ]);
+
+        $description = match ($validated['key']) {
+            'corporate_tax_percentage' => 'نسبة ضريبة الشركات (%)',
+            'show_contract_dates' => 'إظهار تواريخ بداية ونهاية العقد',
+            default => null,
+        };
 
         $setting = SystemSetting::setValue(
             $validated['key'],
             $validated['value'],
-            $validated['key'] === 'corporate_tax_percentage' ? 'نسبة ضريبة الشركات المقدرة (%)' : null
+            $description
         );
 
         return response()->json(['setting' => $setting]);
