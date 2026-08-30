@@ -13,6 +13,7 @@ class PaymentReminderNotification extends BaseNotification
 
     public function toDatabase(object $notifiable): array
     {
+        $currency = $this->payment->currency ?? 'SAR';
         $messages = [
             '3_days' => 'تذكير: دفعة مستحقة خلال 3 أيام',
             'today' => 'تذكير: دفعة مستحقة اليوم',
@@ -22,7 +23,7 @@ class PaymentReminderNotification extends BaseNotification
         return [
             'type' => 'payment_reminder',
             'title' => $messages[$this->reminderType] ?? 'تذكير بالدفع',
-            'body' => number_format((float) $this->payment->amount, 2) . ' ريال — ' . ($this->payment->installment_label ?? ''),
+            'body' => number_format((float) $this->payment->amount, 2) . ' ' . $currency . ' — ' . ($this->payment->installment_label ?? ''),
             'payment_id' => $this->payment->id,
             'workspace_id' => $this->payment->workspace_id,
             'reminder_type' => $this->reminderType,
@@ -32,6 +33,7 @@ class PaymentReminderNotification extends BaseNotification
 
     public function toFcm(object $notifiable): array
     {
+        $currency = $this->payment->currency ?? 'SAR';
         $messages = [
             '3_days' => 'تذكير: دفعة مستحقة خلال 3 أيام',
             'today' => 'تذكير: دفعة مستحقة اليوم',
@@ -40,7 +42,7 @@ class PaymentReminderNotification extends BaseNotification
 
         return [
             'title' => $messages[$this->reminderType] ?? 'تذكير بالدفع',
-            'body' => number_format((float) $this->payment->amount, 2) . ' ريال',
+            'body' => number_format((float) $this->payment->amount, 2) . ' ' . $currency,
             'data' => [
                 'type' => 'payment_reminder',
                 'id' => (string) $this->payment->id,

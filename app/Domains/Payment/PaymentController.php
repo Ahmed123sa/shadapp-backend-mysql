@@ -117,14 +117,35 @@ class PaymentController extends Controller
             ->latest()
             ->first();
 
+        // An explicit contract wins over the auto-link; fall back to the
+        // latest payable contract when the payload carries no contract_id
+        // (e.g. older client apps that don't pick a contract yet).
+        $contract = $lastContract;
+        if ($request->filled('contract_id')) {
+            $contract = $workspace->contracts()
+                ->where('id', $request->contract_id)
+                ->whereIn('status', ['company_approved', 'completed'])
+                ->first();
+
+            if (!$contract) {
+                return response()->json(['message' => 'العقد المحدد غير صالح لهذه الدفعة'], 422);
+            }
+
+            Log::info('Payment explicitly linked to contract', [
+                'workspace_id' => $workspace->id,
+                'client_id' => $workspace->client_id,
+                'contract_id' => $contract->id,
+            ]);
+        }
+
         // Prevent duplicate pending payment for the same contract
-        if ($lastContract && $workspace->payments()->where('contract_id', $lastContract->id)->where('status', 'pending')->exists()) {
+        if ($contract && $workspace->payments()->where('contract_id', $contract->id)->where('status', 'pending')->exists()) {
             return response()->json(['message' => 'يوجد طلب دفع معلق لهذا العقد بالفعل'], 422);
         }
 
         $payment = $workspace->payments()->create([
             'client_id' => $workspace->client_id,
-            'contract_id' => $lastContract?->id,
+            'contract_id' => $contract?->id,
             'amount' => $request->amount,
             'currency' => $request->currency ?? 'SAR',
             'method_type' => $request->method_type,

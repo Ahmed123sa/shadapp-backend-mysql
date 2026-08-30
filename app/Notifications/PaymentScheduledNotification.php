@@ -10,10 +10,11 @@ class PaymentScheduledNotification extends BaseNotification
 
     public function toDatabase(object $notifiable): array
     {
+        $currency = $this->payment->currency ?? 'SAR';
         return [
             'type' => 'payment_scheduled',
             'title' => 'طلب دفعة جديد',
-            'body' => 'لديك دفعة مستحقة: ' . number_format((float) $this->payment->amount, 2) . ' ريال — ' . ($this->payment->installment_label ?? ''),
+            'body' => 'لديك دفعة مستحقة: ' . number_format((float) $this->payment->amount, 2) . ' ' . $currency . ' — ' . ($this->payment->installment_label ?? ''),
             'payment_id' => $this->payment->id,
             'workspace_id' => $this->payment->workspace_id,
             'due_date' => $this->payment->due_date?->toDateString(),
@@ -22,9 +23,10 @@ class PaymentScheduledNotification extends BaseNotification
 
     public function toFcm(object $notifiable): array
     {
+        $currency = $this->payment->currency ?? 'SAR';
         return [
             'title' => 'طلب دفعة جديد',
-            'body' => 'لديك دفعة مستحقة: ' . number_format((float) $this->payment->amount, 2) . ' ريال',
+            'body' => 'لديك دفعة مستحقة: ' . number_format((float) $this->payment->amount, 2) . ' ' . $currency,
             'data' => [
                 'type' => 'payment_scheduled',
                 'id' => (string) $this->payment->id,

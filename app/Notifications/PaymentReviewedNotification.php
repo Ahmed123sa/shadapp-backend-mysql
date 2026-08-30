@@ -23,15 +23,21 @@ class PaymentReviewedNotification extends BaseNotification
             return [
                 'type' => 'workspace_activated',
                 'workspace_id' => $this->payment->workspace_id,
+                'client_id' => $this->payment->client_id,
                 'message' => 'تم اعتماد الدفعة وتفعيل مساحة العمل — يمكنك الآن التواصل مع مدير الحساب',
             ];
         }
+        $currency = $this->payment->currency ?? 'SAR';
+        $label = $this->action === 'rejected' ? 'رفضها' : 'اعتمادها';
         return [
             'type' => 'payment_reviewed',
             'payment_id' => $this->payment->id,
             'action' => $this->action,
             'amount' => $this->payment->amount,
-            'message' => "الدفعة {$this->payment->amount} ر.س تم اعتمادها",
+            'currency' => $currency,
+            'workspace_id' => $this->payment->workspace_id,
+            'client_id' => $this->payment->client_id,
+            'message' => "الدفعة {$this->payment->amount} {$currency} تم {$label}",
         ];
     }
 
@@ -44,15 +50,20 @@ class PaymentReviewedNotification extends BaseNotification
                 'data' => [
                     'type' => 'payment.approved',
                     'workspace_id' => (string) $this->payment->workspace_id,
+                    'client_id' => (string) $this->payment->client_id,
                 ],
             ];
         }
+        $currency = $this->payment->currency ?? 'SAR';
+        $body = $this->action === 'rejected' ? "الدفعة {$this->payment->amount} {$currency} مرفوضة" : "الدفعة {$this->payment->amount} {$currency} مقبولة";
         return [
             'title' => 'مراجعة دفعة',
-            'body' => "الدفعة {$this->payment->amount} ر.س مقبولة",
+            'body' => $body,
             'data' => [
                 'type' => 'payment.approved',
                 'id' => (string) $this->payment->id,
+                'workspace_id' => (string) $this->payment->workspace_id,
+                'client_id' => (string) $this->payment->client_id,
             ],
         ];
     }

@@ -13,24 +13,38 @@ class PaymentCreatedNotification extends BaseNotification
         $this->payment = $payment;
     }
 
+    private function clientName(): string
+    {
+        return $this->payment->workspace?->client?->company_name ?? 'العميل';
+    }
+
     public function toDatabase($notifiable): array
     {
+        $currency = $this->payment->currency ?? 'SAR';
         return [
             'type' => 'payment_created',
             'payment_id' => $this->payment->id,
             'amount' => $this->payment->amount,
-            'message' => "ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ Ø¯ÙØ¹Ø© Ø¬Ø¯ÙŠØ¯Ø©: {$this->payment->amount} Ø±.Ø³",
+            'currency' => $currency,
+            'workspace_id' => $this->payment->workspace_id,
+            'client_id' => $this->payment->client_id,
+            'title' => 'دفعة جديدة',
+            'message' => "أرسل العميل {$this->clientName()} دفعة بقيمة {$this->payment->amount} {$currency}",
         ];
     }
 
     public function toFcm($notifiable): array
     {
+        $currency = $this->payment->currency ?? 'SAR';
         return [
-            'title' => 'Ø¯ÙØ¹Ø© Ø¬Ø¯ÙŠØ¯Ø©',
-            'body' => "ØªÙ… Ø¥Ù†Ø´Ø§Ø¡ Ø¯ÙØ¹Ø© Ø¨Ù‚ÙŠÙ…Ø© {$this->payment->amount} Ø±.Ø³",
+            'title' => 'دفعة جديدة',
+            'body' => "أرسل العميل {$this->clientName()} دفعة بقيمة {$this->payment->amount} {$currency}",
             'data' => [
-                'type' => 'payment',
+                'type' => 'payment_created',
                 'id' => (string) $this->payment->id,
+                'payment_id' => (string) $this->payment->id,
+                'workspace_id' => (string) $this->payment->workspace_id,
+                'client_id' => (string) $this->payment->client_id,
             ],
         ];
     }
