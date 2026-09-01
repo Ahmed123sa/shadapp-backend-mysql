@@ -87,7 +87,7 @@ class ZoomService
             throw new \RuntimeException('Zoom meeting update failed');
         }
 
-        return $response->json();
+        return $response->json() ?? [];
     }
 
     public function deleteMeeting(string $zoomMeetingId): bool

@@ -42,7 +42,7 @@ class ZoomWebhookController extends Controller
             'meeting.ended' => $this->handleMeetingEnded($object),
             'meeting.participant_joined' => $this->handleParticipantJoined($payload),
             'meeting.participant_left' => $this->handleParticipantLeft($payload),
-            'recording.ready' => $this->handleRecordingReady($object),
+            'recording.ready', 'recording.completed' => $this->handleRecordingReady($object),
             default => null,
         };
 
@@ -115,13 +115,22 @@ class ZoomWebhookController extends Controller
     protected function handleRecordingReady(array $object): void
     {
         $zoomMeetingId = $object['id'] ?? null;
-        $playUrl = $object['play_url'] ?? null;
-        if (!$zoomMeetingId || !$playUrl) return;
+        if (!$zoomMeetingId) return;
 
         $meeting = Meeting::where('zoom_meeting_id', $zoomMeetingId)->first();
         if (!$meeting) return;
 
-        $meeting->update(['recording_url' => $playUrl]);
+        $downloadUrl = null;
+        foreach ($object['recording_files'] ?? [] as $file) {
+            if (!empty($file['download_url'])) {
+                $downloadUrl = $file['download_url'];
+                break;
+            }
+        }
+
+        if (!$downloadUrl) return;
+
+        $meeting->update(['recording_url' => $downloadUrl]);
 
         Log::info('Zoom: Recording URL saved', ['meeting_id' => $meeting->id]);
     }

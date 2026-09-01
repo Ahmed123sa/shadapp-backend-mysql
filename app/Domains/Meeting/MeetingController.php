@@ -60,7 +60,7 @@ class MeetingController extends Controller
                 $meetingData['zoom_meeting_id'] = $zoomMeeting['id'] ?? null;
                 $meetingData['link'] = $zoomMeeting['join_url'] ?? null;
                 $meetingData['passcode'] = $zoomMeeting['password'] ?? null;
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 report($e);
             }
         }
@@ -96,7 +96,7 @@ class MeetingController extends Controller
                 if (!empty($zoomData)) {
                     app(ZoomService::class)->updateMeeting($meeting->zoom_meeting_id, $zoomData);
                 }
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 report($e);
             }
         }
@@ -119,11 +119,10 @@ class MeetingController extends Controller
         if ($meeting->zoom_meeting_id && ZoomService::isConfigured()) {
             try {
                 app(ZoomService::class)->deleteMeeting($meeting->zoom_meeting_id);
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 report($e);
             }
         }
-
         $meeting->delete();
 
         return response()->json(['message' => 'تم حذف الاجتماع']);
@@ -156,7 +155,7 @@ class MeetingController extends Controller
         if ($meeting->zoom_meeting_id && ZoomService::isConfigured()) {
             try {
                 app(ZoomService::class)->deleteMeeting($meeting->zoom_meeting_id);
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 report($e);
             }
         }

@@ -16,6 +16,8 @@ use App\Listeners\SendPaymentEmailNotification;
 use App\Listeners\SendMeetingEmailNotification;
 use App\Listeners\SendApprovalEmailNotification;
 use App\Listeners\SendClientWelcomeEmail;
+use App\Models\Meeting;
+use App\Observers\MeetingObserver;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
@@ -50,5 +52,7 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(MeetingCreated::class, [SendMeetingEmailNotification::class, 'handleMeetingCreated']);
         Event::listen(ApprovalResponded::class, [SendApprovalEmailNotification::class, 'handleApprovalResponded']);
         Event::listen(ClientCreated::class, [SendClientWelcomeEmail::class, 'handleClientCreated']);
+
+        Meeting::observe(MeetingObserver::class);
     }
 }
