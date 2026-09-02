@@ -25,10 +25,13 @@ class ZoomWebhookController extends Controller
             ]);
         }
 
-        // Verify webhook signature
+        // Verify webhook signature. Zoom signs "v0:{timestamp}:{body}", so the
+        // timestamp header is part of the signed message and has to be passed
+        // through — see ZoomService::verifyWebhookSignature.
         $signature = $request->header('x-zm-signature') ?? '';
+        $timestamp = $request->header('x-zm-request-timestamp');
         $body = $request->getContent();
-        if (!app(ZoomService::class)->verifyWebhookSignature($body, $signature)) {
+        if (!app(ZoomService::class)->verifyWebhookSignature($body, $signature, $timestamp)) {
             Log::warning('Zoom: Invalid webhook signature');
             return response()->json(['status' => 'invalid_signature'], 401);
         }

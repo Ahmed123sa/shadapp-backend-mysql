@@ -126,14 +126,44 @@ class ZoomService
         return $response->json();
     }
 
-    public function verifyWebhookSignature(string $payload, string $signature): bool
+    /**
+     * Verifies a Zoom webhook against the Webhook Secret Token.
+     *
+     * Zoom signs the message "v0:{timestamp}:{raw body}" — NOT the body on its
+     * own — and sends the result as "v0={hash}" in x-zm-signature, with the
+     * timestamp in x-zm-request-timestamp. Hashing only the body (as this used
+     * to) can never match a real Zoom request.
+     *
+     * Fails CLOSED when the secret is missing. This previously returned true
+     * in that case, which meant a deployment that forgot
+     * ZOOM_WEBHOOK_SECRET_TOKEN (it ships empty in .env.example) silently
+     * accepted any unauthenticated POST to /api/webhooks/zoom — enough to
+     * close meetings, inject attendees, or point recording_url at an
+     * arbitrary URL that users are then shown as "the recording".
+     */
+    public function verifyWebhookSignature(string $payload, string $signature, ?string $timestamp = null): bool
     {
         $secret = config('services.zoom.webhook_secret');
         if (!$secret) {
-            return true;
+            Log::error('Zoom: ZOOM_WEBHOOK_SECRET_TOKEN is not configured — rejecting webhook');
+            return false;
         }
 
-        $expected = hash_hmac('sha256', $payload, $secret);
+        if ($signature === '' || $timestamp === null || $timestamp === '') {
+            return false;
+        }
+
+        // Replay guard: a captured request stays valid forever without this.
+        // Zoom's own guidance is a 5-minute window.
+        if (abs(time() - (int) $timestamp) > 300) {
+            Log::warning('Zoom: webhook timestamp outside the allowed window', [
+                'timestamp' => $timestamp,
+            ]);
+            return false;
+        }
+
+        $expected = 'v0=' . hash_hmac('sha256', "v0:{$timestamp}:{$payload}", $secret);
+
         return hash_equals($expected, $signature);
     }
 }
