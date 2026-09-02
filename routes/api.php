@@ -192,7 +192,10 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     // Notifications
     Route::post('/notifications/send-fcm', [NotificationController::class, 'sendFcm']);
 
-    // System Settings (SA only — controller checks isSuperAdmin)
+    // System Settings. Reads are open to any authenticated user — the mobile
+    // contract builder and the dashboard both need show_contract_dates, not
+    // just SAs. Only update() is SA-gated (it checks isSuperAdmin itself and
+    // whitelists the allowed keys).
     Route::get('/settings', [SettingsController::class, 'index']);
     Route::put('/settings', [SettingsController::class, 'update']);
     Route::get('/settings/tax-summary/{workspace}', [SettingsController::class, 'getTaxSummary']);

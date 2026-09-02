@@ -69,6 +69,28 @@ class ZoomWebhookController extends Controller
         Log::info('Zoom: Meeting auto-completed via webhook', ['meeting_id' => $meeting->id]);
     }
 
+    /**
+     * A stable key for one participant, used to pair a "left" event with the
+     * "joined" entry it belongs to.
+     *
+     * Email alone is not enough: Zoom omits it for participants who join
+     * without signing in, and matching `null === null` pairs a leave event
+     * with whichever anonymous attendee happens to be first in the list.
+     * Prefers the identifiers Zoom actually guarantees, and returns null when
+     * nothing identifies the participant at all.
+     */
+    protected function participantKey(array $participant): ?string
+    {
+        foreach (['participant_uuid', 'user_id', 'id', 'email'] as $field) {
+            $value = $participant[$field] ?? null;
+            if ($value !== null && $value !== '') {
+                return $field . ':' . $value;
+            }
+        }
+
+        return null;
+    }
+
     protected function handleParticipantJoined(array $payload): void
     {
         $zoomMeetingId = $payload['payload']['object']['id'] ?? null;
@@ -79,7 +101,21 @@ class ZoomWebhookController extends Controller
         if (!$meeting) return;
 
         $attendees = $meeting->zoom_attendees ?? [];
+        $key = $this->participantKey($participant);
+
+        // Zoom re-sends participant_joined every time someone rejoins after a
+        // drop, which is routine on a flaky connection. Appending blindly
+        // turned one attendee into one row per reconnect.
+        if ($key !== null) {
+            foreach ($attendees as $existing) {
+                if (($existing['key'] ?? null) === $key && !isset($existing['left_at'])) {
+                    return;
+                }
+            }
+        }
+
         $attendees[] = [
+            'key' => $key,
             'name' => $participant['user_name'] ?? 'Unknown',
             'email' => $participant['email'] ?? null,
             'joined_at' => now()->toIso8601String(),
@@ -97,15 +133,24 @@ class ZoomWebhookController extends Controller
         $meeting = Meeting::where('zoom_meeting_id', $zoomMeetingId)->first();
         if (!$meeting) return;
 
+        $key = $this->participantKey($participant);
+        if ($key === null) {
+            // Leaving the entry open is the lesser error: closing an
+            // arbitrary one records a departure time against the wrong person.
+            Log::info('Zoom: participant_left carried no usable identifier', [
+                'meeting_id' => $meeting->id,
+            ]);
+            return;
+        }
+
         $attendees = $meeting->zoom_attendees ?? [];
-        $email = $participant['email'] ?? null;
 
         foreach ($attendees as &$attendee) {
-            if (($attendee['email'] ?? null) === $email && !isset($attendee['left_at'])) {
+            if (($attendee['key'] ?? null) === $key && !isset($attendee['left_at'])) {
                 $attendee['left_at'] = now()->toIso8601String();
                 if (isset($attendee['joined_at'])) {
                     $joined = \Carbon\Carbon::parse($attendee['joined_at']);
-                    $attendee['duration_min'] = $joined->diffInMinutes(now());
+                    $attendee['duration_min'] = (int) abs($joined->diffInMinutes(now()));
                 }
                 break;
             }

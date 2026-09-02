@@ -214,6 +214,78 @@ class ZoomWebhookTest extends TestCase
         $this->assertEquals('scheduled', $this->meeting->fresh()->status);
     }
 
+    private function participantPayload(string $event, array $participant): array
+    {
+        return [
+            'event' => $event,
+            'payload' => ['object' => ['id' => '9876543210', 'participant' => $participant]],
+        ];
+    }
+
+    private function postParticipantEvent(string $event, array $participant): void
+    {
+        $payload = $this->participantPayload($event, $participant);
+        $this->postJson('/api/webhooks/zoom', $payload, $this->zoomHeaders($payload))->assertOk();
+    }
+
+    public function test_rejoining_does_not_add_a_second_attendee_row(): void
+    {
+        // Zoom re-sends participant_joined on every reconnect, which is
+        // routine on a flaky connection — one person must stay one row.
+        $participant = ['participant_uuid' => 'uuid-1', 'user_name' => 'Sara', 'email' => 'sara@example.com'];
+
+        $this->postParticipantEvent('meeting.participant_joined', $participant);
+        $this->postParticipantEvent('meeting.participant_joined', $participant);
+
+        $this->assertCount(1, $this->meeting->fresh()->zoom_attendees);
+    }
+
+    public function test_rejoining_after_leaving_opens_a_new_attendance_row(): void
+    {
+        $participant = ['participant_uuid' => 'uuid-1', 'user_name' => 'Sara', 'email' => 'sara@example.com'];
+
+        $this->postParticipantEvent('meeting.participant_joined', $participant);
+        $this->postParticipantEvent('meeting.participant_left', $participant);
+        $this->postParticipantEvent('meeting.participant_joined', $participant);
+
+        $attendees = $this->meeting->fresh()->zoom_attendees;
+        $this->assertCount(2, $attendees);
+        $this->assertArrayHasKey('left_at', $attendees[0]);
+        $this->assertArrayNotHasKey('left_at', $attendees[1]);
+    }
+
+    public function test_leaving_closes_the_right_row_when_participants_have_no_email(): void
+    {
+        // Zoom omits `email` for participants who join without signing in.
+        // Matching on email alone made `null === null` close whichever
+        // anonymous attendee happened to be first in the list.
+        $first = ['participant_uuid' => 'uuid-1', 'user_name' => 'Guest One'];
+        $second = ['participant_uuid' => 'uuid-2', 'user_name' => 'Guest Two'];
+
+        $this->postParticipantEvent('meeting.participant_joined', $first);
+        $this->postParticipantEvent('meeting.participant_joined', $second);
+        $this->postParticipantEvent('meeting.participant_left', $second);
+
+        $attendees = $this->meeting->fresh()->zoom_attendees;
+        $this->assertCount(2, $attendees);
+        $this->assertArrayNotHasKey('left_at', $attendees[0], 'Guest One should still be marked present');
+        $this->assertArrayHasKey('left_at', $attendees[1], 'Guest Two is the one who left');
+    }
+
+    public function test_leave_event_with_no_identifier_closes_nobody(): void
+    {
+        $this->postParticipantEvent('meeting.participant_joined', [
+            'participant_uuid' => 'uuid-1',
+            'user_name' => 'Sara',
+        ]);
+
+        $this->postParticipantEvent('meeting.participant_left', ['user_name' => 'Unknown']);
+
+        $attendees = $this->meeting->fresh()->zoom_attendees;
+        $this->assertCount(1, $attendees);
+        $this->assertArrayNotHasKey('left_at', $attendees[0]);
+    }
+
     public function test_update_meeting_returns_empty_array_on_204_response(): void
     {
         Http::fake([
