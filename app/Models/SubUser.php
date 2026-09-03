@@ -40,4 +40,12 @@ class SubUser extends Authenticatable
     {
         return $this->permissions ?? [];
     }
+
+    /**
+     * Signs the stored URL fresh on every read — see App\Support\FileUrl.
+     */
+    public function getAvatarUrlAttribute($value): ?string
+    {
+        return \App\Support\FileUrl::sign($value);
+    }
 }

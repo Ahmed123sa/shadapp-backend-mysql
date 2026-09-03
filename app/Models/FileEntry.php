@@ -24,6 +24,14 @@ class FileEntry extends Model
         return ['reviewed_at' => 'datetime'];
     }
 
+    /**
+     * Signs the stored URL fresh on every read — see App\Support\FileUrl.
+     */
+    public function getFileUrlAttribute($value): ?string
+    {
+        return \App\Support\FileUrl::sign($value);
+    }
+
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class);

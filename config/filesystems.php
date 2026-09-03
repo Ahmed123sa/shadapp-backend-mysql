@@ -17,6 +17,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Signed File URL Lifetime
+    |--------------------------------------------------------------------------
+    |
+    | How long (in minutes) a signed link to a stored file (see the /files
+    | route and App\Support\FileUrl) stays valid after it's handed to a
+    | frontend. Re-signed fresh on every read, so this only bounds how long
+    | a single copied/shared link keeps working — it never causes a stored
+    | *_url column to go permanently stale.
+    |
+    */
+
+    'signed_url_ttl_minutes' => env('SIGNED_URL_TTL_MINUTES', 120),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

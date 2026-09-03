@@ -60,4 +60,14 @@ class User extends Authenticatable
     {
         return $this->hasMany(Client::class, 'manager_id');
     }
+
+    /**
+     * Signs the stored URL fresh on every read — see App\Support\FileUrl.
+     * signature_data is deliberately left unsigned; see Client::getAvatarUrlAttribute
+     * for why (it's copied verbatim into permanent snapshot columns elsewhere).
+     */
+    public function getAvatarUrlAttribute($value): ?string
+    {
+        return \App\Support\FileUrl::sign($value);
+    }
 }

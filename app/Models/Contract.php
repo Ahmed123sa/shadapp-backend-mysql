@@ -47,4 +47,15 @@ class Contract extends Model
     {
         return $this->hasMany(ContractRequiredDocument::class)->orderBy('sort_order');
     }
+
+    /**
+     * Signs the stored URL fresh on every read — see App\Support\FileUrl.
+     * ensureFreshPdf()/CleanupContractPdfs/RegenerateContractPdfs all only
+     * parse the filename out of this value, which a signed URL still
+     * preserves (the signature lives in the query string).
+     */
+    public function getPdfUrlAttribute($value): ?string
+    {
+        return \App\Support\FileUrl::sign($value);
+    }
 }

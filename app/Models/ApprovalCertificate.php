@@ -21,4 +21,12 @@ class ApprovalCertificate extends Model
     {
         return $this->belongsTo(Approval::class);
     }
+
+    /**
+     * Signs the stored URL fresh on every read — see App\Support\FileUrl.
+     */
+    public function getPdfUrlAttribute($value): ?string
+    {
+        return \App\Support\FileUrl::sign($value);
+    }
 }

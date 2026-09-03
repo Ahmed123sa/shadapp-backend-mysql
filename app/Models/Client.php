@@ -76,4 +76,20 @@ class Client extends Authenticatable
     {
         return $this->contact_person;
     }
+
+    /**
+     * Signs the stored URL fresh on every read — see App\Support\FileUrl.
+     *
+     * signature_data is deliberately NOT given the same treatment: it's
+     * copied verbatim into Contract::client_signature_data / Approval::signature
+     * at approval time (ContractController::clientAction/companyApprove,
+     * ApprovalController::respond) and persisted there indefinitely. Signing
+     * it here would bake an expiry into those permanent snapshots. Leaving it
+     * unsigned means an uploaded (non-drawn) signature image's preview will
+     * 404 through the now-authenticated /files route — a known, narrow gap.
+     */
+    public function getAvatarUrlAttribute($value): ?string
+    {
+        return \App\Support\FileUrl::sign($value);
+    }
 }

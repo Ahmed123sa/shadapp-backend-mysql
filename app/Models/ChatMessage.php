@@ -52,4 +52,12 @@ class ChatMessage extends Model
     {
         return $this->hasMany(ChatMessage::class, 'reply_to_id');
     }
+
+    /**
+     * Signs the stored URL fresh on every read — see App\Support\FileUrl.
+     */
+    public function getFileUrlAttribute($value): ?string
+    {
+        return \App\Support\FileUrl::sign($value);
+    }
 }

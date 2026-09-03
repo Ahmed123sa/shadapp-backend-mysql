@@ -188,8 +188,11 @@ class FileController extends Controller
             abort(422, 'لا يمكن حذف ملف تمت الموافقة عليه');
         }
 
-        if ($file->file_url && Storage::disk('public')->exists(str_replace('/storage/', '', $file->file_url))) {
-            Storage::disk('public')->delete(str_replace('/storage/', '', $file->file_url));
+        // getRawOriginal bypasses the file_url accessor (which signs the value
+        // for display) to get back the plain, permanently-shaped stored path.
+        $rawUrl = $file->getRawOriginal('file_url');
+        if ($rawUrl && Storage::disk('public')->exists(str_replace('/storage/', '', $rawUrl))) {
+            Storage::disk('public')->delete(str_replace('/storage/', '', $rawUrl));
         }
 
         $file->delete();

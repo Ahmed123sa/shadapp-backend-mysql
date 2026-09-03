@@ -121,10 +121,14 @@ class ProfileAndSignatureTest extends TestCase
             ->postJson('/api/auth/me', ['avatar' => $file]);
 
         $response->assertStatus(200);
+        // avatar_url is now signed on every read (see App\Support\FileUrl), so
+        // the response value is no longer the raw /storage/... path — assert
+        // against the stored raw value instead, which the disk path is
+        // actually derived from.
         $this->assertStringContainsString('avatars/', $response->json('user.avatar_url'));
 
-        $savedPath = $response->json('user.avatar_url');
-        $relativePath = str_replace('/storage/', '', $savedPath);
+        $rawPath = $this->admin->fresh()->getRawOriginal('avatar_url');
+        $relativePath = str_replace('/storage/', '', $rawPath);
         Storage::disk('public')->assertExists($relativePath);
     }
 
@@ -275,6 +279,9 @@ class ProfileAndSignatureTest extends TestCase
             'official_email', 'signature_data', 'signed_at', 'avatar_url',
         ]]);
         $response->assertJsonPath('user.official_email', 'official@company.com');
-        $response->assertJsonPath('user.avatar_url', '/storage/avatars/test.png');
+        // avatar_url is now signed on every read (see App\Support\FileUrl), so
+        // the response is no longer the raw stored path verbatim — just the
+        // same path signed, which this checks by substring.
+        $this->assertStringContainsString('avatars/test.png', $response->json('user.avatar_url'));
     }
 }
