@@ -439,6 +439,48 @@ class TenantIsolationTest extends TestCase
             ->assertForbidden();
     }
 
+    /**
+     * Regression coverage for a Round 2 audit gap: storeDefinition() and
+     * destroyDefinition() in FileController performed no role check at all
+     * before this fix — any authenticated account manager could create or
+     * delete document definitions for workspaces they don't manage, once
+     * past ScopeWorkspace's ownership check. These three tests fail against
+     * the pre-fix controller.
+     */
+    public function test_manager_cannot_create_document_definition_for_their_own_workspace(): void
+    {
+        $this->actingAsManager($this->managerA)
+            ->postJson("/api/workspaces/{$this->workspaceA->id}/document-definitions", ['name' => 'ID Card'])
+            ->assertForbidden();
+    }
+
+    public function test_manager_cannot_delete_document_definition_in_their_own_workspace(): void
+    {
+        $defInA = DocumentDefinition::create([
+            'workspace_id' => $this->workspaceA->id,
+            'name' => 'Passport',
+            'is_required' => true,
+            'sort_order' => 0,
+        ]);
+
+        $this->actingAsManager($this->managerA)
+            ->deleteJson("/api/workspaces/{$this->workspaceA->id}/document-definitions/{$defInA->id}")
+            ->assertForbidden();
+    }
+
+    public function test_super_admin_can_create_and_delete_document_definitions(): void
+    {
+        $this->actingAsSA()
+            ->postJson("/api/workspaces/{$this->workspaceA->id}/document-definitions", ['name' => 'ID Card'])
+            ->assertCreated();
+
+        $def = DocumentDefinition::where('workspace_id', $this->workspaceA->id)->where('name', 'ID Card')->firstOrFail();
+
+        $this->actingAsSA()
+            ->deleteJson("/api/workspaces/{$this->workspaceA->id}/document-definitions/{$def->id}")
+            ->assertOk();
+    }
+
     // ─── Sub-user tenant boundary ──────────────────────────────
 
     public function test_sub_user_cannot_access_a_workspace_outside_their_own_client(): void

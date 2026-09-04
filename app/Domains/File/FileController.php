@@ -152,6 +152,10 @@ class FileController extends Controller
 
     public function storeDefinition(Request $request, Workspace $workspace): JsonResponse
     {
+        if (!$request->user()->isSuperAdmin()) {
+            abort(403, 'فقط السوبر أدمن يقدر يضيف تعريف مستند');
+        }
+
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -170,6 +174,18 @@ class FileController extends Controller
 
     public function destroyDefinition(Request $request, Workspace $workspace, DocumentDefinition $documentDefinition): JsonResponse
     {
+        if (!$request->user()->isSuperAdmin()) {
+            abort(403, 'فقط السوبر أدمن يقدر يحذف تعريف مستند');
+        }
+
+        // Route model binding resolves $documentDefinition by its own id alone
+        // — without this check, an AM scoped to workspace A could pass a
+        // definition id that actually belongs to workspace B (in the URL)
+        // and delete it, since nothing else ties the two together.
+        if ($documentDefinition->workspace_id !== $workspace->id) {
+            abort(404);
+        }
+
         $documentDefinition->delete();
         return response()->json(['message' => 'تم حذف تعريف المستند']);
     }
