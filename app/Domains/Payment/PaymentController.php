@@ -10,6 +10,9 @@ use App\Models\AuditLog;
 use App\Events\PaymentCreated;
 use App\Events\PaymentScheduleChanged;
 use App\Events\PaymentReviewed;
+use App\Events\PaymentStatusChanged;
+use App\Events\ContractStatusChanged;
+use App\Events\WorkspaceStatusChanged;
 use App\Http\Requests\StorePaymentRequest;
 use App\Http\Requests\ReviewPaymentRequest;
 use Illuminate\Http\JsonResponse;
@@ -206,6 +209,7 @@ class PaymentController extends Controller
         ]);
 
         PaymentCreated::dispatch($payment);
+        PaymentStatusChanged::dispatch($payment);
 
         AuditLog::create([
             'auditable_type' => Payment::class,
@@ -272,6 +276,7 @@ class PaymentController extends Controller
 
         if ($action === 'rejected') {
             PaymentReviewed::dispatch($payment, 'rejected');
+            PaymentStatusChanged::dispatch($payment);
 
             AuditLog::create([
                 'auditable_type' => Payment::class,
@@ -301,7 +306,17 @@ class PaymentController extends Controller
             ]);
             ContractCompanyApproved::dispatch($contract, true);
         });
+        // The bulk ->update() below bypasses Eloquent model events entirely
+        // (query-builder update, not a per-model ->save()), so
+        // ContractStatusChanged can't be fired from an Observer for this
+        // half of the transition — capture which contracts are about to
+        // flip to 'completed' first, run the bulk update, then dispatch the
+        // event explicitly for each one with its final status.
+        $completingContractIds = $workspace->contracts()->where('status', 'company_approved')->pluck('id');
         $workspace->contracts()->where('status', 'company_approved')->update(['status' => 'completed']);
+        Contract::whereIn('id', $completingContractIds)->get()->each(function (Contract $contract) {
+            ContractStatusChanged::dispatch($contract);
+        });
         $payment->client->update(['payment_status' => 'approved']);
 
         $contractApproved = $workspace->contracts()->whereIn('status', ['completed', 'company_approved', 'client_approved'])->exists();
@@ -309,6 +324,7 @@ class PaymentController extends Controller
 
         if ($contractApproved && $paymentApproved) {
             $workspace->update(['status' => 'active', 'activated_at' => now()]);
+            WorkspaceStatusChanged::dispatch($workspace->fresh());
             Log::info('Workspace activated after payment approval', ['workspace_id' => $workspace->id]);
         } else {
             Log::warning('Workspace NOT activated on payment approval', [
@@ -320,6 +336,7 @@ class PaymentController extends Controller
         }
 
         PaymentReviewed::dispatch($payment, 'approved');
+        PaymentStatusChanged::dispatch($payment->fresh());
 
         AuditLog::create([
             'auditable_type' => Payment::class,

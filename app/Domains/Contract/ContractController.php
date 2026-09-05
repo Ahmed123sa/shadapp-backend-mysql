@@ -12,6 +12,8 @@ use App\Events\ContractSent;
 use App\Events\ContractClientApproved;
 use App\Events\ContractCompanyApproved;
 use App\Events\ContractCompleted;
+use App\Events\ContractStatusChanged;
+use App\Events\WorkspaceStatusChanged;
 use App\Http\Requests\StoreContractRequest;
 use App\Http\Requests\UpdateContractRequest;
 use Illuminate\Http\JsonResponse;
@@ -294,6 +296,7 @@ class ContractController extends Controller
         $contract->update(['status' => 'sent']);
 
         event(new ContractSent($contract));
+        ContractStatusChanged::dispatch($contract);
 
         AuditLog::create([
             'auditable_type' => Contract::class,
@@ -340,6 +343,7 @@ class ContractController extends Controller
                 $manager->notify(new \App\Notifications\ContractEditRequestedNotification($contract));
             }
         }
+        ContractStatusChanged::dispatch($contract);
 
         return response()->json(['contract' => $contract->fresh()]);
     }
@@ -364,9 +368,11 @@ class ContractController extends Controller
         // Activate workspace if already fully paid
         if ($workspace->payments()->where('status', 'approved')->exists()) {
             $workspace->update(['status' => 'active', 'activated_at' => now()]);
+            WorkspaceStatusChanged::dispatch($workspace->fresh());
         }
 
         event(new ContractCompanyApproved($contract));
+        ContractStatusChanged::dispatch($contract);
 
         AuditLog::create([
             'auditable_type' => Contract::class,
@@ -388,9 +394,11 @@ class ContractController extends Controller
         $workspace = $contract->workspace;
         if ($workspace->payments()->where('status', 'approved')->exists()) {
             $workspace->update(['status' => 'active', 'activated_at' => now()]);
+            WorkspaceStatusChanged::dispatch($workspace->fresh());
         }
 
         event(new ContractCompleted($contract));
+        ContractStatusChanged::dispatch($contract);
 
         AuditLog::create([
             'auditable_type' => Contract::class,

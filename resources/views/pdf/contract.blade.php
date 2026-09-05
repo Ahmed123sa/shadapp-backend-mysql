@@ -81,7 +81,9 @@
         </div>
         <div class="sig-box">
             <h3>الطرف الثاني (الشركة)</h3>
-            @if($companySignature)
+            @if($companySignatureIsImage && $companyImagePath)
+                <img src="{{ $companyImagePath }}" class="sig-image" alt="توقيع الشركة" />
+            @elseif($companySignature)
                 <div class="sig-text">{{ $companySignature }}</div>
             @else
                 <div class="sig-text" style="color:#ccc;">________________</div>

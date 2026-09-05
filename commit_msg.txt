@@ -1,0 +1,24 @@
+fix: render company signature as image on contract PDF
+
+ContractPdfService/pdf.contract.blade.php only checked SignatureValue::isImage()
+for the client's signature. The company/manager side (company_signature_data,
+often a saved profile signature drawn/uploaded as a PNG) had no such check, so
+an image signature printed as a raw "/storage/..." path string instead of an
+embedded <img>, unlike the client side and the already-fixed approval
+certificate.
+
+- ContractPdfService: compute companySignatureIsImage/companyImagePath via
+  SignatureValue, mirroring the existing client-side computation, and pass
+  them into the pdf.contract view.
+- pdf.contract.blade.php: give the company sig-box the same
+  image/text/placeholder branching the client sig-box already has.
+- Add tests/Feature/ContractPdfSignatureTest.php covering the image, text,
+  and empty-signature branches directly at the view level, plus an
+  integration check that ContractPdfService generates a PDF without error
+  when the company signature is a real image file.
+
+No changes to the client-side signature logic, the approval-certificate PDF,
+or any signature-capture/storage code — this only closes the gap on the
+contract PDF's company side.
+
+(Mirrored from shadapp-backend per the dual-backend sync convention.)
