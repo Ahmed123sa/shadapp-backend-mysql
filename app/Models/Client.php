@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\Access\Authorizable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 
 class Client extends Authenticatable
@@ -27,6 +28,39 @@ class Client extends Authenticatable
     protected $hidden = ['password'];
 
     protected $appends = ['name'];
+
+    protected static function booted(): void
+    {
+        // `uuid` is deliberately not in $fillable — it's never something a
+        // request should be able to set or overwrite, only something the
+        // model assigns itself the moment a row is created.
+        static::creating(function (Client $client) {
+            if (! $client->uuid) {
+                $client->uuid = (string) Str::uuid();
+            }
+        });
+    }
+
+    /**
+     * The dashboard shows this client's uuid in the browser URL instead of
+     * its numeric id (see the 2026_09_07 migration for why). Everything that
+     * already links or calls the API with the numeric id — the mobile app,
+     * other backend code, existing dashboard links that haven't been updated
+     * yet — must keep working unchanged, so this accepts either form rather
+     * than switching the route key entirely.
+     */
+    public function resolveRouteBinding($value, $field = null): ?self
+    {
+        if ($field !== null) {
+            return parent::resolveRouteBinding($value, $field);
+        }
+
+        if (is_string($value) && Str::isUuid($value)) {
+            return $this->where('uuid', $value)->first();
+        }
+
+        return parent::resolveRouteBinding($value, $field);
+    }
 
     /**
      * Overrides the framework default, which sends an English message with a
