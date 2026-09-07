@@ -1,4 +1,0 @@
-chore: remove stray commit_msg.txt from repo
-
-This file is a scratch file used to pass commit messages via `git
-commit -F` and should never have been committed. Removing it now.
