@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Approval;
 use App\Support\SignatureValue;
-use Mpdf\Mpdf;
 use Illuminate\Support\Facades\Storage;
 
 class ApprovalPdfService
@@ -28,16 +27,9 @@ class ApprovalPdfService
             'signatureImagePath' => $signatureImagePath,
         ])->render();
 
-        $mpdf = new Mpdf([
-            'default_font' => 'dejavusans',
-            'mode' => 'ar',
-            'autoArabic' => true,
-            'format' => 'A4',
-            'margin_top' => 10,
-            'margin_bottom' => 20,
-            'margin_left' => 10,
-            'margin_right' => 10,
-        ]);
+        // Built through the factory so the scratch directory lands in
+        // storage/ rather than vendor/ — see MpdfFactory for why.
+        $mpdf = app(MpdfFactory::class)->make();
         $mpdf->WriteHTML($html);
 
         $filename = 'approval-' . $approval->reference_no . '.pdf';

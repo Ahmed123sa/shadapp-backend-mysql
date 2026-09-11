@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Contract;
 use App\Models\SystemSetting;
 use App\Support\SignatureValue;
-use Mpdf\Mpdf;
 use Illuminate\Support\Facades\Storage;
 
 class ContractPdfService
@@ -71,16 +70,9 @@ class ContractPdfService
             'currencyLabel' => $currencyLabel,
         ])->render();
 
-        $mpdf = new Mpdf([
-            'default_font' => 'dejavusans',
-            'mode' => 'ar',
-            'autoArabic' => true,
-            'format' => 'A4',
-            'margin_top' => 10,
-            'margin_bottom' => 20,
-            'margin_left' => 10,
-            'margin_right' => 10,
-        ]);
+        // Built through the factory so the scratch directory lands in
+        // storage/ rather than vendor/ — see MpdfFactory for why.
+        $mpdf = app(MpdfFactory::class)->make();
         $mpdf->WriteHTML($html);
 
         $suffix = $bothSignatures ? '-signed' : '-client-signed';
