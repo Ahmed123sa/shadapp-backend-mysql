@@ -12,6 +12,14 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    // Laravel auto-discovers every handle*/__invoke method in app/Listeners
+    // and registers it *in addition to* the manual Event::listen() calls in
+    // AppServiceProvider::boot() below, so every listener there was firing
+    // twice (confirmed via Event::getListeners() returning 2 for e.g.
+    // ContractClientApproved). All listeners are registered manually, so
+    // discovery is pure duplication — disabling it removes the duplicate
+    // registration without removing any listener.
+    ->withEvents(discover: false)
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->api(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,

@@ -14,6 +14,7 @@ use App\Events\ClientCreated;
 use App\Listeners\SendContractEmailNotification;
 use App\Listeners\SendPaymentEmailNotification;
 use App\Listeners\SendMeetingEmailNotification;
+use App\Listeners\CreateMeetingChatMessage;
 use App\Listeners\SendApprovalEmailNotification;
 use App\Listeners\SendClientWelcomeEmail;
 use App\Models\Meeting;
@@ -50,6 +51,10 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(PaymentCreated::class, [SendPaymentEmailNotification::class, 'handlePaymentCreated']);
         Event::listen(PaymentReviewed::class, [SendPaymentEmailNotification::class, 'handlePaymentReviewed']);
         Event::listen(MeetingCreated::class, [SendMeetingEmailNotification::class, 'handleMeetingCreated']);
+        // This listener had no manual registration anywhere — it only ran because
+        // of auto-discovery. Now that discovery is disabled (bootstrap/app.php),
+        // it needs this explicit line or meeting chat messages stop being created.
+        Event::listen(MeetingCreated::class, [CreateMeetingChatMessage::class, 'handleMeetingCreated']);
         Event::listen(ApprovalResponded::class, [SendApprovalEmailNotification::class, 'handleApprovalResponded']);
         Event::listen(ClientCreated::class, [SendClientWelcomeEmail::class, 'handleClientCreated']);
 
