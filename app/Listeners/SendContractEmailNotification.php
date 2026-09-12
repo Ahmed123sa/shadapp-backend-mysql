@@ -13,6 +13,7 @@ use App\Mail\ContractCompletedMail;
 use App\Models\User;
 use App\Notifications\ContractClientApprovedNotification;
 use App\Notifications\ContractCompanyApprovedNotification;
+use App\Notifications\ContractReceivedNotification;
 use App\Notifications\ContractSentNotification;
 use App\Notifications\ContractCompletedNotification;
 use Illuminate\Mail\Mailable;
@@ -96,6 +97,17 @@ class SendContractEmailNotification
             } catch (\Exception $e) {
                 Log::warning('Failed to send contract sent notification: ' . $e->getMessage());
             }
+        }
+
+        // The client only ever got an email at this step, so a client sitting
+        // in the onboarding screen had no in-app signal that the contract they
+        // are waiting on had arrived — and this is the one onboarding step that
+        // can't progress without them acting. ContractSentNotification above is
+        // worded from the company's side, hence a separate client-facing one.
+        try {
+            $client->notify(new ContractReceivedNotification($contract));
+        } catch (\Exception $e) {
+            Log::warning('Failed to send contract received notification to client: ' . $e->getMessage());
         }
     }
 
