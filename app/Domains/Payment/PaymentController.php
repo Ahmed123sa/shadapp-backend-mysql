@@ -86,12 +86,22 @@ class PaymentController extends Controller
 
         $payments = (clone $query)->latest()->paginate($request->input('per_page', 30));
 
+        // by_currency covers every currency an approved payment was made in
+        // (SAR/USD included), grouped in one query. Kept alongside the two
+        // scalar fields above rather than replacing them, so any existing
+        // consumer reading approved_total_sar/usd directly is unaffected.
+        $byCurrency = (clone $query)->where('status', 'approved')
+            ->selectRaw('currency, SUM(amount) as total')
+            ->groupBy('currency')
+            ->pluck('total', 'currency');
+
         $stats = [
             'total_count' => (clone $query)->count(),
             'approved_count' => (clone $query)->where('status', 'approved')->count(),
             'pending_count' => (clone $query)->where('status', 'pending')->count(),
             'approved_total_sar' => (clone $query)->where('status', 'approved')->where('currency', 'SAR')->sum('amount'),
             'approved_total_usd' => (clone $query)->where('status', 'approved')->where('currency', 'USD')->sum('amount'),
+            'approved_by_currency' => $byCurrency,
         ];
 
         return response()->json([

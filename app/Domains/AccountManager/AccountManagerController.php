@@ -33,7 +33,14 @@ class AccountManagerController extends Controller
                 });
             })
             ->withCount('managedClients')
-            ->latest()
+            // Oldest-created manager first. Was ->latest() (created_at desc),
+            // but managers created within the same second (as in tests, and
+            // possible in bulk-import scenarios) tie on created_at, and MySQL
+            // vs Postgres break that tie differently — the list order wasn't
+            // actually deterministic. ->orderBy('id') as a tiebreaker makes
+            // it deterministic regardless of database.
+            ->oldest()
+            ->orderBy('id')
             ->get();
 
         return response()->json(['managers' => $managers]);
