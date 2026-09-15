@@ -42,4 +42,22 @@ class ClientPolicy
     {
         return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $client->manager_id === $user->id);
     }
+
+    // Super admin only — reassigning a client's manager is a whole-account
+    // operation, not something a manager should be able to do to their own
+    // clients (or, worse, someone else's, if the request forged an id).
+    public function transfer($user, Client $client): bool
+    {
+        return $user instanceof \App\Models\User && $user->isSuperAdmin();
+    }
+
+    // Super admin, or the account manager this client is currently assigned
+    // to — same shape as update()/delete() above, but kept as its own method
+    // (rather than reusing update()) because update() also grants the client
+    // itself edit access, and a client must never be able to archive or
+    // unarchive its own account. See DATA_SAFETY_PLAN.md §5.2.
+    public function archive($user, Client $client): bool
+    {
+        return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $client->manager_id === $user->id);
+    }
 }

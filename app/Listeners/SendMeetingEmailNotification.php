@@ -15,6 +15,12 @@ class SendMeetingEmailNotification
         $workspace = $meeting->workspace;
         $client = $workspace?->client;
         $manager = $workspace?->manager;
+        // See SendPaymentEmailNotification for why this is defensive rather
+        // than load-bearing: deactivation already requires zero managed
+        // clients first.
+        if ($manager && !$manager->isActive()) {
+            $manager = null;
+        }
 
         // A fresh mailable per recipient: Mail::to()->send() appends to the
         // mailable's recipient list rather than replacing it, so a shared

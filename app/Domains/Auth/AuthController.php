@@ -25,6 +25,14 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['email' => ['Invalid credentials.']]);
         }
 
+        // Deactivated account managers are blocked here rather than earlier
+        // (e.g. in a global auth middleware) so the message is specific and
+        // the credential check above still runs first — no timing signal
+        // about whether a deactivated account's password is correct.
+        if (!$user->isActive()) {
+            throw ValidationException::withMessages(['email' => ['هذا الحساب متوقف حاليًا. تواصل مع الأدمن.']]);
+        }
+
         $token = $user->createToken('auth-token')->plainTextToken;
 
         return response()->json([
@@ -43,6 +51,15 @@ class AuthController extends Controller
         // 1. Try Client first
         $client = Client::where('email', $request->email)->first();
         if ($client && Hash::check($request->password, $client->password)) {
+            // Archived clients are blocked here rather than earlier, for the
+            // same reason as deactivated managers above: the credential
+            // check runs first, so there's no timing signal about whether an
+            // archived account's password is correct. See DATA_SAFETY_PLAN.md
+            // §2.3.3 — archiving freezes the workspace but keeps all data.
+            if ($client->isArchived()) {
+                throw ValidationException::withMessages(['email' => ['هذا الحساب متأرشف حاليًا. تواصل مع مديرك.']]);
+            }
+
             $token = $client->createToken('client-token')->plainTextToken;
             return response()->json([
                 'token' => $token,
@@ -62,6 +79,13 @@ class AuthController extends Controller
         // 2. Try SubUser
         $subUser = SubUser::where('email', $request->email)->first();
         if ($subUser && Hash::check($request->password, $subUser->password)) {
+            // A sub-user acts on behalf of its parent client, so archiving
+            // the client must freeze it too — otherwise "client login:
+            // blocked" (§2.3.3) has an open side door.
+            if ($subUser->client && $subUser->client->isArchived()) {
+                throw ValidationException::withMessages(['email' => ['هذا الحساب متأرشف حاليًا. تواصل مع مديرك.']]);
+            }
+
             $token = $subUser->createToken('sub-user-token')->plainTextToken;
             return response()->json([
                 'token' => $token,

@@ -18,6 +18,15 @@ class SendPaymentEmailNotification
     {
         $payment = $event->payment;
         $manager = $payment->workspace?->manager;
+        // Defensive: structurally a deactivated manager should never own a
+        // workspace (deactivation requires zero managed clients first, and
+        // only active managers can receive a transferred client), but
+        // guarding here too means a future violation of that invariant
+        // fails safe — a deactivated account simply stays silent — instead
+        // of emailing/notifying someone who's been told they're locked out.
+        if ($manager && !$manager->isActive()) {
+            $manager = null;
+        }
 
         $admins = User::where('role', User::ROLE_SUPER_ADMIN)->get();
 

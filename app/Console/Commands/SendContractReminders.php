@@ -21,6 +21,9 @@ class SendContractReminders extends Command
 
         foreach ($contracts as $contract) {
             $manager = $contract->workspace?->manager;
+            if ($manager && !$manager->isActive()) {
+                $manager = null;
+            }
             if ($manager) {
                 $manager->notify(new ContractReminderNotification($contract));
                 $sent++;

@@ -50,6 +50,9 @@ class ApprovalController extends Controller
 
     public function store(StoreApprovalRequest $request, Workspace $workspace): JsonResponse
     {
+        if ($workspace->isClientArchived()) {
+            return response()->json(['message' => 'العميل ده متأرشف، مينفعش تتضاف له طلبات موافقة جديدة. فُك الأرشفة الأول.'], 422);
+        }
 
         $approval = $workspace->approvals()->create([
             'title' => $request->title,

@@ -16,6 +16,12 @@ class SendApprovalEmailNotification
         $workspace = $approval->workspace;
         $requester = $approval->requester;
         $client = $workspace?->client;
+        // requested_by is fixed history like contracts.created_by — it can
+        // legitimately point at a manager deactivated after the client was
+        // transferred elsewhere. See SendContractEmailNotification.
+        if ($requester && !$requester->isActive()) {
+            $requester = null;
+        }
 
         // A fresh mailable per recipient: Mail::to()->send() appends to the
         // mailable's recipient list rather than replacing it, so a shared

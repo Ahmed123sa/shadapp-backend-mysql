@@ -164,6 +164,11 @@ class PaymentController extends Controller
     public function store(StorePaymentRequest $request, Workspace $workspace): JsonResponse
     {
         $client = $workspace->client;
+
+        if ($client?->isArchived()) {
+            return response()->json(['message' => 'العميل ده متأرشف، مينفعش تتضاف له دفعات جديدة. فُك الأرشفة الأول.'], 422);
+        }
+
         $methods = $client->client_type === 'individual' ? self::INDIVIDUAL_METHODS : self::BUSINESS_METHODS;
 
         $proofFileUrl = [];

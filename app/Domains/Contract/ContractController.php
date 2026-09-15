@@ -166,6 +166,9 @@ class ContractController extends Controller
 
     public function store(StoreContractRequest $request, Workspace $workspace): JsonResponse
     {
+        if ($workspace->isClientArchived()) {
+            return response()->json(['message' => 'العميل ده متأرشف، مينفعش تتضاف له عقود جديدة. فُك الأرشفة الأول.'], 422);
+        }
 
         $contract = $workspace->contracts()->create([
             'title' => $request->title,

@@ -14,6 +14,7 @@ use App\Support\UploadRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -36,6 +37,12 @@ class ClientController extends Controller
                       ->orWhereDate('date_of_birth', $search);
                 });
             })
+            // Archived clients are hidden from the default list — same
+            // include_inactive=1 convention as deactivated managers (see
+            // AccountManagerController::index). Reports intentionally do NOT
+            // go through this endpoint's default (they pass include_archived=1)
+            // — see DATA_SAFETY_PLAN.md §2.3.3.
+            ->when(!$request->boolean('include_archived'), fn($q) => $q->where('status', '!=', 'archived'))
             ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
             ->when($request->filled('client_type'), fn($q) => $q->where('client_type', $request->client_type))
             ->when($request->filled('manager_id') && $user->isSuperAdmin(), fn($q) => $q->where('manager_id', $request->manager_id))
@@ -396,21 +403,138 @@ class ClientController extends Controller
         return response()->json(['client' => $client->fresh()]);
     }
 
-    public function destroy(Request $request, Client $client): JsonResponse
-    {
-        $this->authorize('delete', $client);
+    // Deliberately no destroy(). Deleting a client used to cascade-delete
+    // its workspace and every contract, payment, signature and chat
+    // message under it — a whole client's history gone in one request,
+    // with no way back except restoring the whole database. The route is
+    // gone too (see routes/api.php) — this comment is the only remaining
+    // trace, on purpose, so nobody re-adds it without reading this first.
+    // An archive/unarchive pair replaces this — see below.
 
-        $client->delete();
+    /**
+     * Archive a client: hides it from the default client list, blocks its
+     * (and its sub-users') login, and freezes its workspace to read-only —
+     * no new contracts, payments, approvals, meetings or chat messages.
+     * Nothing is deleted; every existing record and file stays exactly
+     * where it is. See DATA_SAFETY_PLAN.md §2.3.
+     */
+    public function archive(Request $request, Client $client): JsonResponse
+    {
+        $this->authorize('archive', $client);
+
+        if ($client->isArchived()) {
+            return response()->json(['message' => 'العميل ده متأرشف بالفعل.'], 422);
+        }
+
+        $client->update(['status' => 'archived']);
 
         AuditLog::create([
             'auditable_type' => Client::class,
             'auditable_id' => $client->id,
+            'client_id' => $client->id,
             'user_id' => $request->user()->id,
-            'action' => 'client.deleted',
+            'action' => 'client.archived',
             'ip_address' => $request->ip(),
         ]);
 
-        return response()->json(['message' => 'تم حذف العميل']);
+        return response()->json(['client' => $client->fresh()->load('workspace', 'manager')]);
+    }
+
+    public function unarchive(Request $request, Client $client): JsonResponse
+    {
+        $this->authorize('archive', $client);
+
+        if (!$client->isArchived()) {
+            return response()->json(['message' => 'العميل ده مش متأرشف.'], 422);
+        }
+
+        // Restores to 'active' unconditionally rather than remembering
+        // whatever status preceded the archive — matches the manager
+        // deactivate/activate pair, and 'active' is what every other place
+        // that respects client status (login, workspace-scoped creation)
+        // actually checks against.
+        $client->update(['status' => 'active']);
+
+        AuditLog::create([
+            'auditable_type' => Client::class,
+            'auditable_id' => $client->id,
+            'client_id' => $client->id,
+            'user_id' => $request->user()->id,
+            'action' => 'client.unarchived',
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json(['client' => $client->fresh()->load('workspace', 'manager')]);
+    }
+
+    /**
+     * Reassign a client to a different account manager.
+     *
+     * Deliberately does NOT touch history: contracts.created_by,
+     * approvals.requested_by and meetings.created_by stay pointing at
+     * whoever actually did the work, because that's what actually happened.
+     * What moves is ownership going forward — who's responsible for this
+     * client from now on.
+     *
+     * clients.manager_id and workspaces.manager_id are two separate columns
+     * that both have to change together. Notification/email recipients are
+     * resolved from workspaces.manager_id specifically (see e.g.
+     * ChatController, PaymentController, SendContractEmailNotification) —
+     * updating only the client row would leave the client reassigned in the
+     * client list while every notification about it kept going to the old
+     * manager.
+     */
+    public function transfer(Request $request, Client $client): JsonResponse
+    {
+        $this->authorize('transfer', $client);
+
+        $request->validate([
+            'new_manager_id' => 'required|integer|exists:users,id',
+        ]);
+
+        $newManager = User::find($request->new_manager_id);
+
+        if (!$newManager->isAccountManager()) {
+            return response()->json([
+                'message' => 'المستخدم المختار مش مدير حساب.',
+                'errors' => ['new_manager_id' => ['المستخدم المختار مش مدير حساب.']],
+            ], 422);
+        }
+
+        if (!$newManager->isActive()) {
+            return response()->json([
+                'message' => 'مينفعش تنقل العميل لمدير موقوف.',
+                'errors' => ['new_manager_id' => ['مينفعش تنقل العميل لمدير موقوف.']],
+            ], 422);
+        }
+
+        if ($newManager->id === $client->manager_id) {
+            return response()->json([
+                'message' => 'العميل بالفعل تحت إدارة هذا المدير.',
+                'errors' => ['new_manager_id' => ['العميل بالفعل تحت إدارة هذا المدير.']],
+            ], 422);
+        }
+
+        $oldManagerId = $client->manager_id;
+
+        DB::transaction(function () use ($client, $newManager) {
+            $client->update(['manager_id' => $newManager->id]);
+            $client->workspace?->update(['manager_id' => $newManager->id]);
+        });
+
+        AuditLog::create([
+            'auditable_type' => Client::class,
+            'auditable_id' => $client->id,
+            'client_id' => $client->id,
+            'user_id' => $request->user()->id,
+            'action' => 'client.transferred',
+            'metadata' => ['from_manager_id' => $oldManagerId, 'to_manager_id' => $newManager->id],
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'client' => $client->fresh()->load('workspace', 'manager'),
+        ]);
     }
 
     public function subUsers(Request $request, Client $client): JsonResponse

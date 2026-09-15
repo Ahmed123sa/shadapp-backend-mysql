@@ -41,6 +41,10 @@ class MeetingController extends Controller
             return response()->json(['message' => 'غير مصرح'], 403);
         }
 
+        if ($workspace->isClientArchived()) {
+            return response()->json(['message' => 'العميل ده متأرشف، مينفعش تتضاف له اجتماعات جديدة. فُك الأرشفة الأول.'], 422);
+        }
+
         $meetingData = [
             'workspace_id' => $workspace->id,
             'title' => $request->title,

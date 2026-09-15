@@ -82,12 +82,13 @@ class AuthorizationTest extends TestCase
         $response->assertForbidden();
     }
 
-    public function test_manager_cannot_delete_another_managers_client(): void
-    {
-        $response = $this->actingAs($this->managerA)->deleteJson("/api/clients/{$this->clientB->id}");
-
-        $response->assertForbidden();
-    }
+    // Clients can no longer be deleted at all — see ClientController and
+    // RouteLockdownTest for the full reasoning (deleting a client used to
+    // cascade-delete its entire contract/payment/signature history). This
+    // used to assert 403 for a cross-tenant delete attempt; now that the
+    // route itself is gone, every DELETE to this URL 404s regardless of
+    // whose client it is, so the tenant-isolation angle is covered by
+    // RouteLockdownTest::test_client_delete_route_no_longer_exists instead.
 
     // ─── Contract Authorization ────────────────────────────────
 

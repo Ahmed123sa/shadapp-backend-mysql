@@ -34,6 +34,10 @@ class ChatController extends Controller
 
     public function store(Request $request, Workspace $workspace): JsonResponse
     {
+        if ($workspace->isClientArchived()) {
+            return response()->json(['message' => 'العميل ده متأرشف، مينفعش تتبعت له رسايل جديدة. فُك الأرشفة الأول.'], 422);
+        }
+
         $request->validate([
             'message' => 'nullable|string',
             'type' => 'in:text,file,meeting',
@@ -118,6 +122,14 @@ class ChatController extends Controller
             $recipient = $workspace->manager;
         } elseif ($senderType === \App\Models\SubUser::class) {
             $recipient = $workspace->manager;
+        }
+        // workspace->manager is current ownership, not history, so it
+        // shouldn't structurally be able to point at a deactivated manager
+        // (deactivation requires zero managed clients first) — but the
+        // check is cheap and keeps this consistent with the other
+        // notification call sites.
+        if ($recipient instanceof \App\Models\User && !$recipient->isActive()) {
+            $recipient = null;
         }
         if ($recipient) {
             try {

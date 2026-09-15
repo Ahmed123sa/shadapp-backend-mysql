@@ -22,12 +22,21 @@ class SendMeetingReminders extends Command
 
         foreach ($meetings as $meeting) {
             $creator = $meeting->creator;
+            // created_by is fixed history — it can point at a manager
+            // deactivated after the client moved to someone else via
+            // transfer. A deactivated account shouldn't get reminders.
+            if ($creator && !$creator->isActive()) {
+                $creator = null;
+            }
             if ($creator) {
                 $creator->notify(new MeetingReminderNotification($meeting));
                 $sent++;
             }
 
             $manager = $meeting->workspace?->manager;
+            if ($manager && !$manager->isActive()) {
+                $manager = null;
+            }
             if ($manager && $manager->id !== ($creator?->id)) {
                 $manager->notify(new MeetingReminderNotification($meeting));
                 $sent++;

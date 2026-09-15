@@ -111,13 +111,27 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     Route::get('/account-managers/{manager}/stats', [AccountManagerController::class, 'stats']);
     Route::post('/account-managers', [AccountManagerController::class, 'store']);
     Route::put('/account-managers/{manager}', [AccountManagerController::class, 'update']);
-    Route::delete('/account-managers/{manager}', [AccountManagerController::class, 'destroy']);
+    // No delete route: an account manager is never deleted — see
+    // AccountManagerController for the reasoning (deleting a manager used
+    // to cascade-delete every one of their clients, contracts, payments and
+    // signatures). Deactivate/activate below is the replacement.
+    Route::post('/account-managers/{manager}/deactivate', [AccountManagerController::class, 'deactivate']);
+    Route::post('/account-managers/{manager}/activate', [AccountManagerController::class, 'activate']);
+    // No delete route: an account manager is never deleted — see
+    // AccountManagerController for the reasoning (deleting a manager used
+    // to cascade-delete every one of their clients, contracts, payments and
+    // signatures). A deactivate/reactivate pair belongs here once that
+    // work lands; until then this is a deliberate gap, not an oversight.
 
     // Clients
     Route::get('/clients', [ClientController::class, 'index']);
     Route::post('/clients', [ClientController::class, 'store']);
     Route::put('/clients/{client}', [ClientController::class, 'update']);
-    Route::delete('/clients/{client}', [ClientController::class, 'destroy']);
+    // No delete route: see ClientController — same reasoning as managers
+    // above, minus the cascade risk but with the same "gone forever" one.
+    Route::post('/clients/{client}/transfer', [ClientController::class, 'transfer']);
+    Route::post('/clients/{client}/archive', [ClientController::class, 'archive']);
+    Route::post('/clients/{client}/unarchive', [ClientController::class, 'unarchive']);
 
     // Client profile + location + activity (SuperAdmin / AccountManager)
     Route::get('/clients/{client}/profile', [ClientController::class, 'profile']);

@@ -91,6 +91,16 @@ class Client extends Authenticatable
         return $this->belongsTo(User::class, 'manager_id');
     }
 
+    /**
+     * See DATA_SAFETY_PLAN.md §2.3 — archiving replaces client deletion.
+     * `status` already existed (active/inactive/blocked); 'archived' is a
+     * new value on the same column, not a new column.
+     */
+    public function isArchived(): bool
+    {
+        return $this->status === 'archived';
+    }
+
     public function workspace(): HasOne
     {
         return $this->hasOne(Workspace::class);

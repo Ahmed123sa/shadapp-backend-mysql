@@ -65,6 +65,18 @@ class Workspace extends Model
     }
 
     /**
+     * True once the owning client has been archived (Client::status ===
+     * 'archived' — see DATA_SAFETY_PLAN.md §2.3). An archived client's
+     * workspace stays fully readable (contracts, payments, chat history,
+     * files) but every store()-style action that would create new activity
+     * in it must check this first and refuse.
+     */
+    public function isClientArchived(): bool
+    {
+        return $this->client?->status === 'archived';
+    }
+
+    /**
      * Single source of truth for "does this authenticated principal belong
      * to this workspace's tenant boundary". Used by ScopeWorkspace middleware
      * for every {workspace}-bound route, and must also be called explicitly

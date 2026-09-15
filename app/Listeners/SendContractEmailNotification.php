@@ -81,6 +81,14 @@ class SendContractEmailNotification
         $contract = $event->contract;
         $client = $contract->workspace->client;
         $manager = $contract->creator;
+        // Unlike workspace->manager, creator is fixed history — it doesn't
+        // move on transfer — so it genuinely can point at a manager who's
+        // since been deactivated (created the contract, client was later
+        // transferred away, then they were deactivated). Skip them for real
+        // here, not just defensively.
+        if ($manager && !$manager->isActive()) {
+            $manager = null;
+        }
 
         $this->mailUnique(
             array_merge(
@@ -115,6 +123,9 @@ class SendContractEmailNotification
     {
         $contract = $event->contract;
         $manager = $contract->creator;
+        if ($manager && !$manager->isActive()) {
+            $manager = null;
+        }
 
         try {
             $pdfPath = app(\App\Services\ContractPdfService::class)->generateWithClientSignature($contract);
@@ -194,6 +205,9 @@ class SendContractEmailNotification
         $contract = $event->contract;
         $client = $contract->workspace->client;
         $manager = $contract->creator;
+        if ($manager && !$manager->isActive()) {
+            $manager = null;
+        }
 
         $this->mailUnique(
             [$client->email, $manager?->email],
