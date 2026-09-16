@@ -40,6 +40,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Off-site backup copy
+    |--------------------------------------------------------------------------
+    |
+    | A directory on a *different* physical disk (or a network share) that
+    | every db:backup archive is mirrored to. Left empty, db:backup writes
+    | only to storage/app/backups — which is on the same disk as the data it
+    | is protecting, so the failure that loses one loses both.
+    |
+    | The directory must already exist; App\Services\OffsiteBackupCopy never
+    | creates it, so that an unmounted disk fails loudly instead of quietly
+    | filling a local folder. Retention here is separate from, and normally
+    | longer than, db:backup's --keep: this is the copy that survives the
+    | local disk, so it is the one that needs to reach further back.
+    |
+    */
+
+    'backup_offsite_path' => env('BACKUP_OFFSITE_PATH', ''),
+
+    'backup_offsite_keep' => env('BACKUP_OFFSITE_KEEP', 30),
+
+    /*
+    |--------------------------------------------------------------------------
     | Database Connections
     |--------------------------------------------------------------------------
     |

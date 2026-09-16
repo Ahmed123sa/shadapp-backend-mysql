@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\OffsiteBackupCopy;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 use Symfony\Component\Process\Process;
@@ -26,6 +27,13 @@ use Symfony\Component\Process\Process;
  *
  * Which tool runs is chosen from the connection driver, so this works on both
  * the Postgres and MySQL deployments without configuration.
+ *
+ * Finally, if BACKUP_OFFSITE_PATH is set, the finished archive is mirrored
+ * to it and the copy is verified (App\Services\OffsiteBackupCopy). An archive
+ * that only exists on the disk it is protecting is not a backup; the disk
+ * that dies takes both copies. When the mirror fails the local archive is
+ * still kept, but the command exits non-zero, so a scheduler can tell
+ * "the backup ran" apart from "a copy of it exists somewhere else".
  */
 class BackupDatabase extends Command
 {
@@ -113,6 +121,45 @@ class BackupDatabase extends Command
         }
 
         $this->prune($directory, (int) $this->option('keep'));
+
+        return $this->copyOffsite($archivePath);
+    }
+
+    /**
+     * Mirror the finished archive to the off-site destination, if one is set.
+     *
+     * A failure here does not throw away the local archive — it was written
+     * successfully and is better than nothing. But the command still exits
+     * non-zero, because "the backup ran" and "a copy of it exists somewhere
+     * the local disk cannot take with it" are different claims, and only the
+     * exit code distinguishes them to a scheduler. A warning alone is how a
+     * machine goes months with no off-site copy and nobody notices.
+     */
+    private function copyOffsite(string $archivePath): int
+    {
+        $offsite = OffsiteBackupCopy::fromConfig();
+
+        if (! $offsite->isConfigured()) {
+            return self::SUCCESS;
+        }
+
+        try {
+            $target = $offsite->copy($archivePath);
+        } catch (\RuntimeException $e) {
+            $this->newLine();
+            $this->error('Off-site copy FAILED: '.$e->getMessage());
+            $this->warn('The local archive in storage/app/backups is intact, but there is no off-site copy of it.');
+
+            return self::FAILURE;
+        }
+
+        $this->info('Off-site copy: '.$target.' (verified)');
+
+        $pruned = $offsite->prune();
+
+        if ($pruned > 0) {
+            $this->info("Pruned {$pruned} old off-site archive(s).");
+        }
 
         return self::SUCCESS;
     }
