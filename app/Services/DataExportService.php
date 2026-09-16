@@ -40,6 +40,19 @@ use Illuminate\Support\Facades\Storage;
  * the same shape as App\Console\Commands\BackupDatabase — so a half-built
  * export is never mistaken for a finished one, and cleanup runs even if a
  * step in the middle throws.
+ *
+ * On disk, the three scopes land in separate subtrees under the 'local'
+ * disk's exports/ folder, so someone browsing storage/app/private/exports
+ * directly (not just through the dashboard) can tell what's what without
+ * opening a single file — discussed and confirmed with the user before
+ * building this:
+ *   exports/full-backup/{stamp}.zip
+ *   exports/manager-backup/{manager_id}-{sanitized name}/{stamp}.zip
+ *   exports/client/{client_id}-{sanitized company_name}/{stamp}.zip
+ * Repeated exports for the same manager/client collect side by side in
+ * that one folder rather than scattering flat files distinguished only by
+ * filename prefix. See sanitizeFolderName() for why the id is part of the
+ * folder name and not just the name.
  */
 class DataExportService
 {
@@ -47,8 +60,8 @@ class DataExportService
     {
         return match ($dataExport->scope) {
             DataExport::SCOPE_SYSTEM => $this->buildSystemArchive(),
-            DataExport::SCOPE_MANAGER => $this->buildManagerArchive(User::findOrFail($dataExport->scope_id)),
-            DataExport::SCOPE_CLIENT => $this->buildClientArchive(Client::findOrFail($dataExport->scope_id)),
+            DataExport::SCOPE_MANAGER => $this->buildManagerArchive(User::findOrFail($dataExport->scope_id), $dataExport),
+            DataExport::SCOPE_CLIENT => $this->buildClientArchive(Client::findOrFail($dataExport->scope_id), $dataExport),
             default => throw new \InvalidArgumentException("Unknown export scope [{$dataExport->scope}]."),
         };
     }
@@ -59,9 +72,9 @@ class DataExportService
      * Reused rather than duplicated so the two never drift apart — db:backup
      * already handles the driver-specific dump command, the
      * single-transaction snapshot, and zipping the uploaded files alongside
-     * it. The resulting archive is copied (not moved) into the exports/
-     * directory so it goes through the 7-day expiry/prune cycle that governs
-     * exports, independent of db:backup's own --keep retention.
+     * it. The resulting archive is copied (not moved) into exports/full-backup/
+     * so it goes through the 7-day expiry/prune cycle that governs exports,
+     * independent of db:backup's own --keep retention.
      */
     private function buildSystemArchive(): string
     {
@@ -83,16 +96,25 @@ class DataExportService
             throw new \RuntimeException('db:backup reported success but produced no archive.');
         }
 
-        $relative = 'exports/'.pathinfo($newest->getFilename(), PATHINFO_FILENAME).'.zip';
-        Storage::disk('local')->makeDirectory('exports');
+        $relative = 'exports/full-backup/'.pathinfo($newest->getFilename(), PATHINFO_FILENAME).'.zip';
+        Storage::disk('local')->makeDirectory('exports/full-backup');
         File::copy($newest->getPathname(), Storage::disk('local')->path($relative));
 
         return $relative;
     }
 
-    private function buildManagerArchive(User $manager): string
+    /**
+     * Every manager's exports land under the same exports/manager-backup/
+     * folder, one subfolder per manager (id + a sanitized name, see
+     * sanitizeFolderName()) — repeated requests for the same manager over
+     * time collect side by side in that one folder instead of scattering
+     * flat files across exports/ that only a filename prefix distinguished.
+     * Discussed and confirmed with the user before building this.
+     */
+    private function buildManagerArchive(User $manager, DataExport $dataExport): string
     {
         $stamp = now()->format('Y-m-d_His');
+        $folder = 'exports/manager-backup/'.$manager->id.'-'.$this->sanitizeFolderName($manager->name);
         $work = storage_path('app/export-tmp-manager-'.$manager->id.'-'.$stamp);
         File::ensureDirectoryExists($work);
 
@@ -103,7 +125,12 @@ class DataExportService
                 $this->writeClientTree($client, $work.'/clients/client-'.$client->id);
             }
 
-            $relative = 'exports/manager-'.$manager->id.'-'.$stamp.'.zip';
+            // Repeat exports for the same manager share one folder (see class
+            // docblock), and the timestamp alone is only precise to the
+            // second — two requests in the same second would otherwise
+            // collide. The row's own id is guaranteed unique regardless of
+            // timing.
+            $relative = $folder.'/'.$stamp.'_'.$dataExport->id.'.zip';
             $this->zip($work, $relative);
 
             return $relative;
@@ -112,21 +139,50 @@ class DataExportService
         }
     }
 
-    private function buildClientArchive(Client $client): string
+    /**
+     * Same one-folder-per-entity scheme as buildManagerArchive() above, under
+     * exports/client/ instead — keyed on the client's company_name since
+     * that's the label the dashboard and every export JSON file already use
+     * to identify a client, not the contact person's name.
+     */
+    private function buildClientArchive(Client $client, DataExport $dataExport): string
     {
         $stamp = now()->format('Y-m-d_His');
+        $folder = 'exports/client/'.$client->id.'-'.$this->sanitizeFolderName($client->company_name);
         $work = storage_path('app/export-tmp-client-'.$client->id.'-'.$stamp);
 
         try {
             $this->writeClientTree($client, $work);
 
-            $relative = 'exports/client-'.$client->id.'-'.$stamp.'.zip';
+            // Same collision reasoning as buildManagerArchive(): the row id
+            // guarantees uniqueness even for two exports of the same client
+            // within the same second.
+            $relative = $folder.'/'.$stamp.'_'.$dataExport->id.'.zip';
             $this->zip($work, $relative);
 
             return $relative;
         } finally {
             File::deleteDirectory($work);
         }
+    }
+
+    /**
+     * Turns a manager/client name into something safe to use as a directory
+     * component on every filesystem this might ever land on — a local disk
+     * today, possibly a mounted network drive or a cloud disk later
+     * (DATA_SAFETY_PLAN.md §4's still-open backup-destination discussion).
+     * Path separators and the handful of characters Windows forbids outright
+     * become underscores; the id prefix already added by the caller is what
+     * actually guarantees uniqueness, so this only needs to be safe, not
+     * unique or reversible — a company renamed later simply gets a
+     * differently-named folder on its *next* export, past ones untouched.
+     */
+    private function sanitizeFolderName(string $name): string
+    {
+        $clean = preg_replace('/[\/\\\\:*?"<>|\x00-\x1F]/u', '_', trim($name)) ?? '';
+        $clean = trim(preg_replace('/[\s_]+/u', '_', $clean) ?? '', '_');
+
+        return $clean !== '' ? $clean : 'unnamed';
     }
 
     /**
@@ -434,12 +490,17 @@ class DataExportService
 
     /**
      * Zips everything under $work, preserving relative paths, into
-     * storage/app/private/exports/{$relativeDestPath}. Mirrors
+     * storage/app/private/{$relativeDestPath}. Mirrors
      * App\Console\Commands\BackupDatabase::archive()'s approach.
+     *
+     * makeDirectory() is called on the full parent path, not a fixed
+     * top-level folder, because $relativeDestPath now nests one or two
+     * levels deep (exports/manager-backup/{id-name}/{stamp}.zip) — see
+     * buildManagerArchive()/buildClientArchive() above.
      */
     private function zip(string $work, string $relativeDestPath): void
     {
-        Storage::disk('local')->makeDirectory('exports');
+        Storage::disk('local')->makeDirectory(dirname($relativeDestPath));
         $destAbsolute = Storage::disk('local')->path($relativeDestPath);
 
         $zip = new \ZipArchive();

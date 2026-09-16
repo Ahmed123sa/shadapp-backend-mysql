@@ -319,4 +319,48 @@ class DataExportTest extends TestCase
         $this->assertSame('failed', $failedRow['status']);
         $this->assertNull($failedRow['download_url']);
     }
+
+    /**
+     * DATA_SAFETY_PLAN.md §4 — discussed and confirmed with the user:
+     * exports are organized on disk into one folder per manager/client
+     * (id + a sanitized name) rather than flat files distinguished only by
+     * a filename prefix, so someone browsing storage/app/private/exports
+     * directly can tell what's what. Also covers the "same person exported
+     * twice" case: both requests must land in the same folder.
+     */
+    public function test_client_and_manager_exports_use_the_expected_folder_scheme(): void
+    {
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+        $manager = User::factory()->create(['role' => User::ROLE_ACCOUNT_MANAGER, 'name' => 'Ahmed/Manager']);
+        [$client] = $this->makeClientWithWorkspace($manager, ['company_name' => 'Alpha/Beta Co']);
+
+        $clientResponse = $this->actingAs($admin, 'sanctum')->postJson('/api/data-exports', [
+            'scope' => 'client',
+            'scope_id' => $client->id,
+        ]);
+        $clientResponse->assertStatus(202);
+        $clientExport = DataExport::findOrFail($clientResponse->json('export.id'));
+
+        $this->assertSame("exports/client/{$client->id}-Alpha_Beta_Co", dirname($clientExport->file_path));
+
+        $managerResponse = $this->actingAs($admin, 'sanctum')->postJson('/api/data-exports', [
+            'scope' => 'manager',
+            'scope_id' => $manager->id,
+        ]);
+        $managerResponse->assertStatus(202);
+        $managerExport = DataExport::findOrFail($managerResponse->json('export.id'));
+
+        $this->assertSame("exports/manager-backup/{$manager->id}-Ahmed_Manager", dirname($managerExport->file_path));
+
+        // Second export for the same manager: same folder, different file.
+        $managerResponse2 = $this->actingAs($admin, 'sanctum')->postJson('/api/data-exports', [
+            'scope' => 'manager',
+            'scope_id' => $manager->id,
+        ]);
+        $managerResponse2->assertStatus(202);
+        $managerExport2 = DataExport::findOrFail($managerResponse2->json('export.id'));
+
+        $this->assertSame(dirname($managerExport->file_path), dirname($managerExport2->file_path));
+        $this->assertNotSame($managerExport->file_path, $managerExport2->file_path);
+    }
 }
