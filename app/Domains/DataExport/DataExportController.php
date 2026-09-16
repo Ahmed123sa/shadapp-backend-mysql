@@ -42,6 +42,14 @@ class DataExportController extends Controller
             ->latest()
             ->paginate(20);
 
+        // getDownloadUrlAttribute() isn't in DataExport's $appends (it mints
+        // a fresh 15-minute signed URL every time it's touched, so it must
+        // never end up cached/serialized outside a request that's actually
+        // about to use it) — appended explicitly here, once, on the rows
+        // this specific request is authorized to see (already filtered
+        // above), rather than globally on the model.
+        $exports->getCollection()->transform(fn (DataExport $export) => $export->append('download_url'));
+
         return response()->json(['exports' => $exports]);
     }
 

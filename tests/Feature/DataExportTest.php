@@ -285,4 +285,38 @@ class DataExportTest extends TestCase
 
         $zip->close();
     }
+
+    public function test_index_exposes_a_download_url_only_for_a_ready_export(): void
+    {
+        $admin = User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]);
+        $manager = User::factory()->create(['role' => User::ROLE_ACCOUNT_MANAGER]);
+        [$client] = $this->makeClientWithWorkspace($manager);
+
+        // 'client' scope actually finishes (QUEUE_CONNECTION=sync) — this one
+        // ends up 'ready' with a real file on disk.
+        $ready = $this->actingAs($admin, 'sanctum')->postJson('/api/data-exports', [
+            'scope' => 'client',
+            'scope_id' => $client->id,
+        ]);
+        $ready->assertStatus(202);
+
+        // 'system' scope always fails against this suite's sqlite database
+        // (see this test class's own docblock) — ends up 'failed'.
+        $failed = $this->actingAs($admin, 'sanctum')->postJson('/api/data-exports', ['scope' => 'system']);
+        $failed->assertStatus(202);
+
+        $index = $this->actingAs($admin, 'sanctum')->getJson('/api/data-exports');
+        $index->assertStatus(200);
+
+        $rows = collect($index->json('exports.data'));
+        $readyRow = $rows->firstWhere('id', $ready->json('export.id'));
+        $failedRow = $rows->firstWhere('id', $failed->json('export.id'));
+
+        $this->assertSame('ready', $readyRow['status']);
+        $this->assertIsString($readyRow['download_url']);
+        $this->assertStringContainsString('/exports/'.$readyRow['id'].'/download', $readyRow['download_url']);
+
+        $this->assertSame('failed', $failedRow['status']);
+        $this->assertNull($failedRow['download_url']);
+    }
 }
