@@ -17,6 +17,7 @@ use App\Domains\Notification\NotificationController;
 use App\Domains\SubUser\SubUserController;
 use App\Domains\Dashboard\DashboardController;
 use App\Domains\Settings\SettingsController;
+use App\Domains\DataExport\DataExportController;
 use App\Http\Controllers\ZoomWebhookController;
 use Illuminate\Support\Facades\Route;
 // Public auth routes
@@ -213,4 +214,10 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     Route::get('/settings', [SettingsController::class, 'index']);
     Route::put('/settings', [SettingsController::class, 'update']);
     Route::get('/settings/tax-summary/{workspace}', [SettingsController::class, 'getTaxSummary']);
+
+    // Data export (DATA_SAFETY_PLAN.md §3) — request/list. The actual
+    // download route ('exports.download') is unauthenticated by design and
+    // lives in routes/web.php; see DataExportController::download's docblock.
+    Route::get('/data-exports', [DataExportController::class, 'index']);
+    Route::post('/data-exports', [DataExportController::class, 'store']);
 });

@@ -54,7 +54,14 @@ class FileUrl
         return array_map(fn ($v) => static::sign($v, $ttlMinutes), $values);
     }
 
-    protected static function extractStoragePath(string $value): ?string
+    /**
+     * Public so App\Services\DataExportService can resolve a stored *_url
+     * column back to a real path on the 'public' disk when copying the
+     * underlying file into an export archive — it needs the same "is this
+     * actually one of our /storage/... values" logic this class already
+     * applies before signing, just without the signing step.
+     */
+    public static function extractStoragePath(string $value): ?string
     {
         $urlPath = Str::contains($value, '://') ? (string) parse_url($value, PHP_URL_PATH) : $value;
 

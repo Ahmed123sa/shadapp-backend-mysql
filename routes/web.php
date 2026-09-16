@@ -1,5 +1,6 @@
 <?php
 
+use App\Domains\DataExport\DataExportController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
@@ -25,6 +26,15 @@ Route::get('/files/{path}', function (string $path) {
     $response->headers->set('Access-Control-Allow-Headers', '*');
     return $response;
 })->where('path', '.*')->middleware('signed')->name('files.serve');
+
+// Data export download (DATA_SAFETY_PLAN.md §3.5.3) — same "signed URL is
+// the only proof of authorization" pattern as files.serve above, since a
+// data export archive is exactly the same kind of thing (a stored file)
+// just far more sensitive in aggregate. See DataExportController::download
+// for what the extra check on top of the signature covers.
+Route::get('/exports/{dataExport}/download', [DataExportController::class, 'download'])
+    ->middleware('signed')
+    ->name('exports.download');
 
 Route::get('/', function () {
     return view('welcome');

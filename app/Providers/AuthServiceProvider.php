@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\Approval;
 use App\Models\Client;
 use App\Models\Contract;
+use App\Models\DataExport;
 use App\Models\FileEntry;
 use App\Models\Meeting;
 use App\Models\Payment;
@@ -13,6 +14,7 @@ use App\Models\Workspace;
 use App\Policies\ApprovalPolicy;
 use App\Policies\ClientPolicy;
 use App\Policies\ContractPolicy;
+use App\Policies\DataExportPolicy;
 use App\Policies\FileEntryPolicy;
 use App\Policies\MeetingPolicy;
 use App\Policies\PaymentPolicy;
@@ -31,6 +33,7 @@ class AuthServiceProvider extends ServiceProvider
         Approval::class => ApprovalPolicy::class,
         Meeting::class => MeetingPolicy::class,
         SubUser::class => SubUserPolicy::class,
+        DataExport::class => DataExportPolicy::class,
     ];
 
     public function boot(): void
