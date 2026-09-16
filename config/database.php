@@ -123,6 +123,43 @@ return [
             'sslmode' => env('DB_SSLMODE', 'prefer'),
         ],
 
+        /*
+         * A throwaway target for
+         * `php artisan db:restore --connection=restore_target`.
+         *
+         * Verifying a backup means replaying it, and replaying it over the
+         * live database to find out whether it works is not verification —
+         * it is a coin flip with production as the stake. This connection
+         * points at a scratch database on the same server, under the same
+         * credentials, so the drill can be repeated whenever without anyone
+         * editing DB_DATABASE and having to remember to change it back.
+         *
+         * Everything except the database name deliberately tracks the real
+         * connection's env vars: a dump that only restores under different
+         * settings than production runs has not been shown to restore under
+         * production's. The charset default differs from the Postgres repo's
+         * copy of this block for that same reason — it follows the driver
+         * this deployment actually uses.
+         *
+         * DB_RESTORE_DATABASE has no default on purpose. db:restore drops
+         * every table it finds, so guessing a name here would be a way to
+         * discover the wrong one had been guessed.
+         */
+        'restore_target' => [
+            'driver' => env('DB_CONNECTION', 'mysql'),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '3306'),
+            'database' => env('DB_RESTORE_DATABASE', ''),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8mb4'),
+            'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => 'InnoDB',
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),

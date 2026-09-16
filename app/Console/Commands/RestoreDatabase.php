@@ -46,11 +46,25 @@ use Symfony\Component\Process\Process;
  * 3. The restore is confirmed interactively by default, showing which
  *    database and which archive, because --force plus a shell history entry
  *    is exactly how the wrong environment gets flattened.
+ *
+ * --connection exists so the drill in point 1's spirit can actually be run:
+ *
+ *   php artisan db:restore --connection=restore_target --database-only
+ *
+ * replays the newest archive into the throwaway database configured as
+ * 'restore_target' in config/database.php, proving the backup restores
+ * without going anywhere near the live one. The alternative — editing
+ * DB_DATABASE, restoring, and remembering to change it back — works exactly
+ * until the day someone forgets, and then the application is quietly serving
+ * a test database. Everything downstream of the replay (the connection
+ * purge, the orphan report's queries) follows the same --connection, so the
+ * report describes the database that was actually restored.
  */
 class RestoreDatabase extends Command
 {
     protected $signature = 'db:restore
         {archive? : Path to the archive; defaults to the newest in storage/app/backups}
+        {--connection= : Restore into this connection instead of the default (e.g. restore_target)}
         {--database-only : Restore the SQL dump alone, leaving uploaded files untouched}
         {--files-only : Restore uploaded files alone, leaving the database untouched}
         {--fresh : Empty storage/app/public first, so the file tree matches the archive exactly}
@@ -113,8 +127,25 @@ class RestoreDatabase extends Command
             return self::FAILURE;
         }
 
-        $connection = config('database.default');
+        $connection = $this->option('connection') ?: config('database.default');
         $config = config("database.connections.{$connection}");
+
+        if (! is_array($config)) {
+            $this->error("No connection named [{$connection}] in config/database.php.");
+
+            return self::FAILURE;
+        }
+
+        if (($config['database'] ?? '') === '') {
+            // Hit when --connection=restore_target is used without
+            // DB_RESTORE_DATABASE set. Left without a default on purpose:
+            // guessing a database name for a command that drops every table
+            // it finds is not a kindness.
+            $this->error("Connection [{$connection}] has no database name configured.");
+
+            return self::FAILURE;
+        }
+
         $driver = $config['driver'] ?? null;
 
         if (! $this->option('files-only') && ! in_array($driver, ['mysql', 'mariadb', 'pgsql'], true)) {
@@ -123,7 +154,7 @@ class RestoreDatabase extends Command
             return self::FAILURE;
         }
 
-        if (! $this->confirmRestore($archive, $config, $driver)) {
+        if (! $this->confirmRestore($archive, $connection, $config, $driver)) {
             $this->warn('Aborted. Nothing was changed.');
 
             return self::FAILURE;
@@ -144,7 +175,7 @@ class RestoreDatabase extends Command
                 return self::FAILURE;
             }
 
-            if (! $this->option('files-only') && ! $this->restoreDatabase($work.DIRECTORY_SEPARATOR.'database.sql', $config, $driver)) {
+            if (! $this->option('files-only') && ! $this->restoreDatabase($work.DIRECTORY_SEPARATOR.'database.sql', $connection, $config, $driver)) {
                 return self::FAILURE;
             }
 
@@ -156,7 +187,11 @@ class RestoreDatabase extends Command
         }
 
         if (! $this->option('database-only')) {
-            $this->reportOrphans();
+            // Deliberately the connection we just restored into, not the
+            // default one: with --connection=restore_target the live database
+            // is untouched, and reporting its file references against the
+            // restored archive's files would be comparing two unrelated things.
+            $this->reportOrphans($connection);
         }
 
         $this->newLine();
@@ -203,7 +238,7 @@ class RestoreDatabase extends Command
         return $newest->getPathname();
     }
 
-    private function confirmRestore(string $archive, array $config, ?string $driver): bool
+    private function confirmRestore(string $archive, string $connection, array $config, ?string $driver): bool
     {
         $what = match (true) {
             (bool) $this->option('database-only') => 'the database',
@@ -216,7 +251,10 @@ class RestoreDatabase extends Command
         $this->line('  Restores: '.$what);
 
         if (! $this->option('files-only')) {
-            $this->line('  Into:     '.($config['database'] ?? '?').' on '.($config['host'] ?? '?')." ({$driver})");
+            // The database name is spelled out next to the connection name so
+            // that a mistyped --connection is visible here rather than
+            // afterwards.
+            $this->line('  Into:     '.($config['database'] ?? '?').' on '.($config['host'] ?? '?')." ({$driver}, connection: {$connection})");
         }
 
         if ($this->option('fresh')) {
@@ -291,7 +329,7 @@ class RestoreDatabase extends Command
         return true;
     }
 
-    private function restoreDatabase(string $sqlPath, array $config, ?string $driver): bool
+    private function restoreDatabase(string $sqlPath, string $connection, array $config, ?string $driver): bool
     {
         if (! File::exists($sqlPath) || File::size($sqlPath) === 0) {
             $this->error('The archive\'s database.sql is empty — refusing to restore from it.');
@@ -324,9 +362,10 @@ class RestoreDatabase extends Command
             return false;
         }
 
-        // The tables the open connection knew about were just dropped and
-        // recreated underneath it; anything cached about them is stale.
-        DB::reconnect();
+        // The tables this connection knew about were just dropped and
+        // recreated underneath it by an outside process; purge drops the
+        // cached PDO instance so the next query opens a fresh one.
+        DB::purge($connection);
 
         return true;
     }
@@ -427,10 +466,10 @@ class RestoreDatabase extends Command
      * backup missed it", and only a human knows which of those matters. The
      * list is printed so that judgement can actually be made.
      */
-    private function reportOrphans(): void
+    private function reportOrphans(string $connection): void
     {
         try {
-            $referenced = $this->referencedPaths();
+            $referenced = $this->referencedPaths($connection);
         } catch (\Throwable $e) {
             // The restore itself succeeded; failing to produce an advisory
             // report is not a reason to report the whole operation as failed.
@@ -471,7 +510,7 @@ class RestoreDatabase extends Command
     /**
      * @return array<string, true> referenced storage paths, as a set
      */
-    private function referencedPaths(): array
+    private function referencedPaths(string $connection): array
     {
         $paths = [];
 
@@ -491,16 +530,16 @@ class RestoreDatabase extends Command
         // command ships in both the Postgres and MySQL backends, and a column
         // dropped by a later migration should degrade the report, not throw.
         foreach (self::FILE_COLUMNS as $table => $columns) {
-            foreach ($this->existingColumns($table, $columns) as $column) {
-                foreach (DB::table($table)->whereNotNull($column)->pluck($column) as $value) {
+            foreach ($this->existingColumns($connection, $table, $columns) as $column) {
+                foreach (DB::connection($connection)->table($table)->whereNotNull($column)->pluck($column) as $value) {
                     $collect(is_string($value) ? $value : null);
                 }
             }
         }
 
         foreach (self::JSON_FILE_COLUMNS as $table => $columns) {
-            foreach ($this->existingColumns($table, $columns) as $column) {
-                foreach (DB::table($table)->whereNotNull($column)->pluck($column) as $value) {
+            foreach ($this->existingColumns($connection, $table, $columns) as $column) {
+                foreach (DB::connection($connection)->table($table)->whereNotNull($column)->pluck($column) as $value) {
                     $decoded = is_string($value) ? json_decode($value, true) : null;
 
                     foreach (is_array($decoded) ? $decoded : [] as $entry) {
@@ -517,13 +556,16 @@ class RestoreDatabase extends Command
      * @param  array<int, string>  $columns
      * @return array<int, string>
      */
-    private function existingColumns(string $table, array $columns): array
+    private function existingColumns(string $connection, string $table, array $columns): array
     {
-        if (! Schema::hasTable($table)) {
+        if (! Schema::connection($connection)->hasTable($table)) {
             return [];
         }
 
-        return array_values(array_filter($columns, fn (string $column) => Schema::hasColumn($table, $column)));
+        return array_values(array_filter(
+            $columns,
+            fn (string $column) => Schema::connection($connection)->hasColumn($table, $column)
+        ));
     }
 
     /**

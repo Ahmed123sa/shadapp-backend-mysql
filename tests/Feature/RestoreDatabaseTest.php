@@ -95,6 +95,58 @@ class RestoreDatabaseTest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_it_rejects_an_unknown_connection_name(): void
+    {
+        $this->makeArchive('restore-test-conn.zip', ['database.sql' => 'SELECT 1;']);
+
+        $this->artisan('db:restore', [
+            'archive' => 'restore-test-conn.zip',
+            '--connection' => 'restore_targt',
+            '--force' => true,
+            '--skip-snapshot' => true,
+        ])
+            ->expectsOutputToContain('No connection named [restore_targt]')
+            ->assertExitCode(1);
+    }
+
+    public function test_it_refuses_a_connection_with_no_database_name(): void
+    {
+        // What restore_target looks like before DB_RESTORE_DATABASE is set.
+        // Refusing here is the point: the command drops every table it finds,
+        // so it must never fall back to a guessed database name.
+        config(['database.connections.restore_target.database' => '']);
+
+        $this->makeArchive('restore-test-nodb.zip', ['database.sql' => 'SELECT 1;']);
+
+        $this->artisan('db:restore', [
+            'archive' => 'restore-test-nodb.zip',
+            '--connection' => 'restore_target',
+            '--force' => true,
+            '--skip-snapshot' => true,
+        ])
+            ->expectsOutputToContain('no database name configured')
+            ->assertExitCode(1);
+    }
+
+    public function test_the_confirmation_names_the_connection_it_will_restore_into(): void
+    {
+        $this->makeArchive('restore-test-named.zip', ['database.sql' => 'SELECT 1;']);
+
+        // --connection=mysql rather than rebinding database.default: the
+        // driver check needs a target it accepts (the suite's default is
+        // sqlite, which db:restore rejects before ever reaching the prompt),
+        // and repointing the *default* would send RefreshDatabase's teardown
+        // rollback at a connection it never opened. Nothing here actually
+        // connects — answering 'no' returns before the first query.
+        $this->artisan('db:restore', [
+            'archive' => 'restore-test-named.zip',
+            '--connection' => 'mysql',
+        ])
+            ->expectsOutputToContain('connection: mysql')
+            ->expectsConfirmation('This overwrites existing data. Continue?', 'no')
+            ->assertExitCode(1);
+    }
+
     public function test_declining_the_confirmation_changes_nothing(): void
     {
         $this->makeArchive('restore-test-decline.zip', [
