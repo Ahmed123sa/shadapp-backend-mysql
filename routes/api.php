@@ -100,6 +100,7 @@ Route::middleware(['auth.any:sanctum,client,sub_user', 'scope.workspace'])->grou
     Route::get('/contracts/{contract}/files', [ContractController::class, 'files']);
 
     // Sub-users — accessible by admin, client, and sub_user
+    Route::get('/sub-user-permissions', [SubUserController::class, 'permissionKeys']);
     Route::get('/clients/{client}/sub-users', [ClientController::class, 'subUsers']);
     Route::post('/clients/{client}/sub-users', [SubUserController::class, 'store']);
     Route::get('/sub-users/{subUser}', [SubUserController::class, 'show']);

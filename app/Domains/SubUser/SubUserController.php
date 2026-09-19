@@ -49,43 +49,36 @@ class SubUserController extends Controller
             'ip_address' => $request->ip(),
         ]);
 
-        return response()->json(['sub_user' => $subUser], 201);
+        return response()->json(['sub_user' => $this->present($subUser)], 201);
+    }
+
+    /**
+     * SUBUSER_PLAN.md §6.1 — the 11 permission keys a sub-user can hold,
+     * for the dashboard and mobile to build their permission-toggle UI from
+     * instead of each keeping its own hardcoded copy of SubUser::PERMISSION_KEYS.
+     */
+    public function permissionKeys(): JsonResponse
+    {
+        return response()->json(['permissions' => SubUser::PERMISSION_KEYS]);
     }
 
     public function show(SubUser $subUser): JsonResponse
     {
         $this->authorize('view', $subUser);
 
-        return response()->json([
-            'sub_user' => [
-                'id' => $subUser->id,
-                'name' => $subUser->name,
-                'email' => $subUser->email,
-                'permissions' => $subUser->getPermissionsArray(),
-                'avatar_url' => $subUser->avatar_url,
-                'client_id' => $subUser->client_id,
-            ],
-        ]);
+        return response()->json(['sub_user' => $this->present($subUser)]);
     }
 
     public function updatePermissions(Request $request, SubUser $subUser): JsonResponse
     {
         $this->authorize('updatePermissions', $subUser);
 
-        $validKeys = [
-            'can_chat', 'can_view_contracts', 'can_approve_contracts',
-            'can_view_payments', 'can_upload_payment_proof',
-            'can_view_approvals', 'can_respond_approvals',
-            'can_view_files', 'can_upload_files',
-            'can_view_meetings', 'can_join_meetings',
-        ];
-
         $request->validate([
             'permissions' => 'required|array',
         ]);
 
         $permissions = collect($request->permissions)
-            ->only($validKeys)
+            ->only(SubUser::PERMISSION_KEYS)
             ->mapWithKeys(fn ($value, $key) => [$key => (bool) $value])
             ->toArray();
 
@@ -100,10 +93,7 @@ class SubUserController extends Controller
             'ip_address' => $request->ip(),
         ]);
 
-        return response()->json(['sub_user' => [
-            'id' => $subUser->id,
-            'permissions' => $subUser->fresh()->getPermissionsArray(),
-        ]]);
+        return response()->json(['sub_user' => $this->present($subUser->fresh())]);
     }
 
     public function destroy(Request $request, SubUser $subUser): JsonResponse
@@ -157,16 +147,29 @@ class SubUserController extends Controller
             'ip_address' => $request->ip(),
         ]);
 
-        return response()->json([
-            'sub_user' => [
-                'id' => $subUser->id,
-                'name' => $subUser->fresh()->name,
-                'email' => $subUser->fresh()->email,
-                'phone' => $subUser->fresh()->phone,
-                'date_of_birth' => $subUser->fresh()->date_of_birth?->toDateString(),
-                'avatar_url' => $subUser->fresh()->avatar_url,
-            ],
-        ]);
+        return response()->json(['sub_user' => $this->present($subUser->fresh())]);
+    }
+
+    /**
+     * SUBUSER_PLAN.md §6.2/§6.3 — the single response shape every action
+     * above returns. Before this, store() serialized the raw Eloquent model,
+     * show() and updatePermissions() each hand-built their own (different)
+     * subset of fields, and updateProfile() called $subUser->fresh() five
+     * separate times (five queries) to build one array. One fetch, one
+     * shape, used everywhere.
+     */
+    private function present(SubUser $subUser): array
+    {
+        return [
+            'id' => $subUser->id,
+            'name' => $subUser->name,
+            'email' => $subUser->email,
+            'phone' => $subUser->phone,
+            'date_of_birth' => $subUser->date_of_birth?->toDateString(),
+            'permissions' => $subUser->getPermissionsArray(),
+            'avatar_url' => $subUser->avatar_url,
+            'client_id' => $subUser->client_id,
+        ];
     }
 
     /**

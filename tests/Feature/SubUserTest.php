@@ -872,4 +872,50 @@ class SubUserTest extends TestCase
             'action' => 'sub_user.profile_updated',
         ]);
     }
+
+    // ---------------------------------------------------------------
+    // 6. Phase 6 (SUBUSER_PLAN.md §6.1/§6.2/§6.3) — tidiness.
+    // ---------------------------------------------------------------
+
+    public function test_permission_keys_endpoint_returns_the_single_source_list(): void
+    {
+        [$client] = $this->makeClient();
+
+        $this->actingAs($client, 'client')
+            ->getJson('/api/sub-user-permissions')
+            ->assertStatus(200)
+            ->assertJson(['permissions' => SubUser::PERMISSION_KEYS]);
+    }
+
+    public function test_creating_a_sub_user_returns_the_shaped_response_not_the_raw_model(): void
+    {
+        [$client] = $this->makeClient();
+
+        $response = $this->actingAs($client, 'client')
+            ->postJson("/api/clients/{$client->id}/sub-users", [
+                'name' => 'Accountant',
+                'email' => 'shaped@example.com',
+                'password' => 'Password1',
+            ]);
+
+        $response->assertStatus(201)->assertJsonStructure([
+            'sub_user' => ['id', 'name', 'email', 'phone', 'date_of_birth', 'permissions', 'avatar_url', 'client_id'],
+        ]);
+        // The raw model would have serialized created_at/updated_at and the
+        // (hidden) password hash alongside these — present() returns only
+        // the fields above, same shape as show()/updatePermissions().
+        $response->assertJsonMissingPath('sub_user.created_at');
+    }
+
+    public function test_updating_permissions_returns_the_full_shaped_sub_user_not_just_id_and_permissions(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id, 'name' => 'Employee']);
+
+        $this->actingAs($client, 'client')
+            ->patchJson("/api/sub-users/{$subUser->id}/permissions", ['permissions' => ['can_chat' => true]])
+            ->assertStatus(200)
+            ->assertJsonPath('sub_user.name', 'Employee')
+            ->assertJsonPath('sub_user.permissions.can_chat', true);
+    }
 }
