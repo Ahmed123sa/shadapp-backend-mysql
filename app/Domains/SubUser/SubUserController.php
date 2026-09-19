@@ -4,6 +4,7 @@ namespace App\Domains\SubUser;
 
 use App\Models\SubUser;
 use App\Models\Client;
+use App\Models\User;
 use App\Models\AuditLog;
 use App\Support\UploadRules;
 use Illuminate\Http\JsonResponse;
@@ -40,6 +41,15 @@ class SubUserController extends Controller
         // received a 500 and never found out — the exact bug report this
         // was added to close: create fails in the UI, but a refresh shows
         // the account exists anyway.
+        //
+        // `audit_logs.user_id` is a real foreign key into `users` (staff
+        // accounts only). This route is only ever reachable by the owning
+        // Client (SubUserPolicy::create has no User/staff branch at all),
+        // so `$request->user()->id` here is a client id, not a users.id —
+        // writing it unguarded throws a 1452 FK violation on MySQL/Postgres
+        // every single time (SQLite doesn't enforce the constraint, which
+        // is why the test suite never caught this). `client_id` already
+        // exists on this table for exactly this case.
         $subUser = DB::transaction(function () use ($request, $client) {
             $subUser = $client->subUsers()->create([
                 'name' => $request->name,
@@ -52,7 +62,8 @@ class SubUserController extends Controller
             AuditLog::create([
                 'auditable_type' => SubUser::class,
                 'auditable_id' => $subUser->id,
-                'user_id' => $request->user()?->id,
+                'client_id' => $client->id,
+                'user_id' => $request->user() instanceof User ? $request->user()->id : null,
                 'action' => 'sub_user.created',
                 'metadata' => ['email' => $subUser->email],
                 'ip_address' => $request->ip(),
@@ -126,7 +137,8 @@ class SubUserController extends Controller
             AuditLog::create([
                 'auditable_type' => SubUser::class,
                 'auditable_id' => $subUser->id,
-                'user_id' => $request->user()?->id,
+                'client_id' => $subUser->client_id,
+                'user_id' => $request->user() instanceof User ? $request->user()->id : null,
                 'action' => 'sub_user.permissions_updated',
                 'metadata' => ['permissions' => $permissions],
                 'ip_address' => $request->ip(),
@@ -146,7 +158,8 @@ class SubUserController extends Controller
             AuditLog::create([
                 'auditable_type' => SubUser::class,
                 'auditable_id' => $subUser->id,
-                'user_id' => $request->user()?->id,
+                'client_id' => $subUser->client_id,
+                'user_id' => $request->user() instanceof User ? $request->user()->id : null,
                 'action' => 'sub_user.deleted',
                 'ip_address' => $request->ip(),
             ]);
@@ -186,12 +199,21 @@ class SubUserController extends Controller
             // AuditLog; this one didn't, even though changing a sub-user's email
             // is effectively a handover of the account's login (SUBUSER_PLAN.md
             // §5.4).
+            //
+            // Unlike the methods above, the actor here is genuinely either
+            // the owning client OR the sub-user themselves (SubUserPolicy::
+            // updateProfile allows both) — 'acted_by' keeps that distinction
+            // instead of losing it now that user_id is guarded to staff only.
             AuditLog::create([
                 'auditable_type' => SubUser::class,
                 'auditable_id' => $subUser->id,
-                'user_id' => $request->user()?->id,
+                'client_id' => $subUser->client_id,
+                'user_id' => $request->user() instanceof User ? $request->user()->id : null,
                 'action' => 'sub_user.profile_updated',
-                'metadata' => ['fields' => array_keys($updateData)],
+                'metadata' => [
+                    'fields' => array_keys($updateData),
+                    'acted_by' => $request->user() instanceof SubUser ? 'self' : 'client',
+                ],
                 'ip_address' => $request->ip(),
             ]);
         });
@@ -252,18 +274,22 @@ class SubUserController extends Controller
             return response()->json(['message' => 'كلمة المرور الحالية غير صحيحة'], 422);
         }
 
-        DB::transaction(function () use ($request, $subUser) {
+        DB::transaction(function () use ($request, $subUser, $actor) {
             $subUser->update(['password' => $request->password]);
 
             // Invalidate every existing token so a session started with the old
             // password (or a colleague who knew it) can't keep using it.
             $subUser->tokens()->delete();
 
+            // Same dual-actor case as updateProfile() above — the client
+            // resets it, or the sub-user changes their own.
             AuditLog::create([
                 'auditable_type' => SubUser::class,
                 'auditable_id' => $subUser->id,
-                'user_id' => $request->user()?->id,
+                'client_id' => $subUser->client_id,
+                'user_id' => $actor instanceof User ? $actor->id : null,
                 'action' => 'sub_user.password_changed',
+                'metadata' => ['acted_by' => $actor instanceof SubUser ? 'self' : 'client'],
                 'ip_address' => $request->ip(),
             ]);
         });

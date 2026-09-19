@@ -1037,4 +1037,121 @@ class SubUserTest extends TestCase
             AuditLog::flushEventListeners();
         }
     }
+
+    // ---------------------------------------------------------------
+    // 8. Audit log actor fields (18 Sept 2026) — closes a second bug found
+    // while fixing #7 above: every AuditLog::create() call here wrote
+    // 'user_id' => $request->user()?->id unconditionally, but
+    // audit_logs.user_id is a real foreign key into `users` (staff
+    // accounts). The actor for every one of these routes is a Client or a
+    // SubUser, never a User, so that write threw a 1452 FK violation on
+    // MySQL/Postgres on every single call — SQLite doesn't enforce the
+    // constraint, which is why the whole suite stayed green while this was
+    // 100% broken in production. Fixed by only writing user_id when the
+    // actor actually is a User, and using the existing client_id column
+    // (plus 'acted_by' in metadata for the two dual-actor endpoints) to
+    // keep the audit trail meaningful.
+    // ---------------------------------------------------------------
+
+    public function test_creating_a_sub_user_logs_client_id_not_user_id(): void
+    {
+        [$client] = $this->makeClient();
+
+        $this->actingAs($client, 'client')
+            ->postJson("/api/clients/{$client->id}/sub-users", [
+                'name' => 'Accountant',
+                'email' => 'audit-fields-create@example.com',
+                'password' => 'Password1',
+            ])
+            ->assertStatus(201);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'sub_user.created',
+            'client_id' => $client->id,
+            'user_id' => null,
+        ]);
+    }
+
+    public function test_updating_permissions_logs_client_id_not_user_id(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id]);
+
+        $this->actingAs($client, 'client')
+            ->patchJson("/api/sub-users/{$subUser->id}/permissions", ['permissions' => ['can_chat' => true]])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'sub_user.permissions_updated',
+            'client_id' => $client->id,
+            'user_id' => null,
+        ]);
+    }
+
+    public function test_deleting_a_sub_user_logs_client_id_not_user_id(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id]);
+
+        $this->actingAs($client, 'client')
+            ->deleteJson("/api/sub-users/{$subUser->id}")
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'sub_user.deleted',
+            'client_id' => $client->id,
+            'user_id' => null,
+        ]);
+    }
+
+    public function test_client_updating_a_sub_users_profile_logs_acted_by_client(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id]);
+
+        $this->actingAs($client, 'client')
+            ->putJson("/api/sub-users/{$subUser->id}/profile", ['name' => 'New Name'])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'sub_user.profile_updated',
+            'client_id' => $client->id,
+            'user_id' => null,
+            'metadata' => json_encode(['fields' => ['name'], 'acted_by' => 'client']),
+        ]);
+    }
+
+    public function test_a_sub_user_updating_their_own_profile_logs_acted_by_self(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->putJson("/api/sub-users/{$subUser->id}/profile", ['name' => 'New Name'])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'sub_user.profile_updated',
+            'client_id' => $client->id,
+            'user_id' => null,
+            'metadata' => json_encode(['fields' => ['name'], 'acted_by' => 'self']),
+        ]);
+    }
+
+    public function test_client_changing_a_sub_users_password_logs_acted_by_client(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id]);
+
+        $this->actingAs($client, 'client')
+            ->patchJson("/api/sub-users/{$subUser->id}/password", ['password' => 'NewPassword2'])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'sub_user.password_changed',
+            'client_id' => $client->id,
+            'user_id' => null,
+            'metadata' => json_encode(['acted_by' => 'client']),
+        ]);
+    }
 }
