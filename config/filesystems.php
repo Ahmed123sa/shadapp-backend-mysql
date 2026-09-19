@@ -32,6 +32,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Signed URL Rounding Window
+    |--------------------------------------------------------------------------
+    |
+    | Signed expiries are rounded up to a boundary this many minutes wide, so
+    | that repeated reads of the same file inside one window hand out a
+    | byte-identical URL. Without it, every read mints a different signature,
+    | and every image cache downstream (Flutter's NetworkImage, the browser)
+    | treats the same avatar as a brand-new image and re-downloads it — which
+    | is why avatars used to blink on every refresh.
+    |
+    | The trade is that a link lives between ttl and ttl + window minutes.
+    | Larger windows cache better; smaller ones bound a shared link tighter.
+    |
+    */
+
+    'signed_url_window_minutes' => env('SIGNED_URL_WINDOW_MINUTES', 15),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

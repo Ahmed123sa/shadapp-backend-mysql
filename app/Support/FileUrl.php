@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
@@ -39,7 +40,43 @@ class FileUrl
 
         $ttl = $ttlMinutes ?? (int) config('filesystems.signed_url_ttl_minutes', 120);
 
-        return URL::temporarySignedRoute('files.serve', now()->addMinutes($ttl), ['path' => $path]);
+        return URL::temporarySignedRoute('files.serve', static::expiryFor($ttl), ['path' => $path]);
+    }
+
+    /**
+     * The expiry timestamp, rounded up to a fixed clock boundary.
+     *
+     * Signing with a raw `now()->addMinutes($ttl)` makes the expiry — and so
+     * the signature, and so the whole URL — different on every single read.
+     * That quietly breaks every image cache downstream: Flutter's
+     * NetworkImage and the browser both key their cache on the URL string, so
+     * a freshly signed avatar is a cache miss every time the list it sits in
+     * refreshes. The visible symptom is an avatar that blinks out and fades
+     * back in on every poll, which is what sent us looking.
+     *
+     * Rounding the expiry up to the next whole window makes every read of the
+     * same path inside that window produce a byte-identical URL, so the cache
+     * hits and the image stays put. The cost is that a link lives somewhere
+     * between $ttl and $ttl + window minutes rather than exactly $ttl — which
+     * matters not at all for a bound that exists to stop an indefinitely
+     * shareable link, not to expire one to the second.
+     */
+    private static function expiryFor(int $ttlMinutes): \DateTimeInterface
+    {
+        $window = max(1, (int) config('filesystems.signed_url_window_minutes', 15)) * 60;
+
+        // Anchor on *now*, not on now+ttl. Rounding the expiry itself looks
+        // equivalent but is not: the boundary then moves with the clock, so
+        // two reads a second apart can straddle it and produce different
+        // URLs — which is the whole problem this is meant to solve, and what
+        // the first version of this method got wrong.
+        //
+        // Flooring the current time to its window and adding a full window
+        // means every read inside one window lands on the same expiry, and
+        // the link always outlives the configured TTL by up to one window.
+        $windowStart = (int) (floor(now()->getTimestamp() / $window) * $window);
+
+        return Date::createFromTimestamp($windowStart + $window + ($ttlMinutes * 60));
     }
 
     /**
