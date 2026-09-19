@@ -7,6 +7,8 @@ use App\Models\SubUser;
 use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -354,20 +356,19 @@ class SubUserTest extends TestCase
     }
 
     // ---------------------------------------------------------------
-    // 2. Known holes — these assertions are WRONG on purpose.
-    //    Later phases of SUBUSER_PLAN.md must flip each one.
+    // 2. Phase 2 fixes (SUBUSER_PLAN.md §2) — server-side action-permission
+    //    guards. Before this phase only can_respond_approvals was enforced
+    //    (a manual check inside ApprovalController); the other four
+    //    permissions only hid a tab in the dashboard/mobile app, so calling
+    //    the API directly sidestepped them entirely. The route-level
+    //    subuser.can:<permission> middleware (RequireSubUserPermission) now
+    //    enforces all five. Each guarded route gets a "denied when the flag
+    //    is false" test and an "allowed when the flag is true" test, plus one
+    //    sanity check that the primary Client account is never touched by
+    //    this middleware.
     // ---------------------------------------------------------------
 
-    /**
-     * HOLE (plan §2): ten of the eleven permissions are never read by the
-     * backend. Only can_respond_approvals is enforced (ApprovalController).
-     * The rest hide tabs in the dashboard and the mobile app, so calling the
-     * API directly sidesteps them entirely.
-     *
-     * can_chat is the sample here; can_approve_contracts,
-     * can_upload_payment_proof and can_upload_files behave the same way.
-     */
-    public function test_HOLE_a_sub_user_can_post_chat_without_the_chat_permission(): void
+    public function test_a_sub_user_cannot_post_chat_without_the_chat_permission(): void
     {
         [$client, $workspace] = $this->makeClient();
         $subUser = SubUser::factory()->create([
@@ -380,25 +381,224 @@ class SubUserTest extends TestCase
                 'message' => 'sent with the permission switched off',
                 'type' => 'text',
             ])
-            ->assertStatus(201);
+            ->assertStatus(403);
     }
 
-    /**
-     * The one permission that genuinely is enforced. Kept next to the holes so
-     * the contrast is on the record: Phase 2 makes the others look like this.
-     */
-    public function test_can_respond_approvals_is_actually_enforced(): void
+    public function test_a_sub_user_can_post_chat_with_the_chat_permission(): void
     {
         [$client, $workspace] = $this->makeClient();
         $subUser = SubUser::factory()->create([
             'client_id' => $client->id,
-            'permissions' => ['can_respond_approvals' => false],
+            'permissions' => ['can_chat' => true],
         ]);
-        $approval = \App\Models\Approval::factory()->create(['workspace_id' => $workspace->id]);
 
         $this->actingAs($subUser, 'sub_user')
-            ->postJson("/api/approvals/{$approval->id}/respond", ['action' => 'approved'])
+            ->postJson("/api/workspaces/{$workspace->id}/chat", [
+                'message' => 'sent with the permission switched on',
+                'type' => 'text',
+            ])
+            ->assertStatus(201);
+    }
+
+    public function test_a_sub_user_cannot_upload_a_payment_proof_without_the_permission(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_upload_payment_proof' => false],
+        ]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->postJson("/api/workspaces/{$workspace->id}/payments", [
+                'amount' => 1000,
+                'method_type' => 'bank_transfer',
+            ])
             ->assertStatus(403);
+    }
+
+    public function test_a_sub_user_can_upload_a_payment_proof_with_the_permission(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_upload_payment_proof' => true],
+        ]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->postJson("/api/workspaces/{$workspace->id}/payments", [
+                'amount' => 1000,
+                'method_type' => 'bank_transfer',
+            ])
+            ->assertStatus(201);
+    }
+
+    public function test_a_sub_user_cannot_update_a_payment_without_the_permission(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+        $payment = \App\Models\Payment::factory()->create([
+            'workspace_id' => $workspace->id,
+            'client_id' => $client->id,
+        ]);
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_upload_payment_proof' => false],
+        ]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->putJson("/api/workspaces/{$workspace->id}/payments/{$payment->id}", [
+                'amount' => 2000,
+            ])
+            ->assertStatus(403);
+    }
+
+    public function test_a_sub_user_can_update_a_payment_with_the_permission(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+        $payment = \App\Models\Payment::factory()->create([
+            'workspace_id' => $workspace->id,
+            'client_id' => $client->id,
+        ]);
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_upload_payment_proof' => true],
+        ]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->putJson("/api/workspaces/{$workspace->id}/payments/{$payment->id}", [
+                'amount' => 2000,
+            ])
+            ->assertStatus(200);
+    }
+
+    public function test_a_sub_user_cannot_upload_a_file_without_the_permission(): void
+    {
+        Storage::fake('public');
+        [$client, $workspace] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_upload_files' => false],
+        ]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->postJson("/api/workspaces/{$workspace->id}/files", [
+                'file' => UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf'),
+            ])
+            ->assertStatus(403);
+    }
+
+    public function test_a_sub_user_can_upload_a_file_with_the_permission(): void
+    {
+        Storage::fake('public');
+        [$client, $workspace] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_upload_files' => true],
+        ]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->postJson("/api/workspaces/{$workspace->id}/files", [
+                'file' => UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf'),
+            ])
+            ->assertStatus(201);
+    }
+
+    /**
+     * can_respond_approvals originally guarded /approvals/{approval}/respond
+     * (ApprovalController::respond) in this phase's first pass. That turned
+     * out to be the wrong route: ApprovalPolicy::respond() already restricts
+     * that action to staff (User) only, so a Client or SubUser can never
+     * reach it regardless of any permission flag — the manual permission
+     * check that used to live in that controller method was dead code.
+     *
+     * The route a client/sub-user actually uses to approve or request edits
+     * is /chat/{chatMessage}/respond (ChatController::respond), which also
+     * updates the linked Approval when one exists. That route had no
+     * can_respond_approvals guard at all before this fix — the real hole.
+     * The permission now lives on this route instead.
+     */
+    public function test_a_sub_user_cannot_respond_to_a_chat_message_without_the_permission(): void
+    {
+        [$client, $workspace, $manager] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_respond_approvals' => false],
+        ]);
+        $chatMessage = \App\Models\ChatMessage::create([
+            'workspace_id' => $workspace->id,
+            'sender_type' => User::class,
+            'sender_id' => $manager->id,
+            'message' => 'needs your approval',
+            'type' => 'text',
+            'requires_action' => true,
+            'action_taken' => false,
+        ]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->postJson("/api/chat/{$chatMessage->id}/respond", ['action' => 'approved'])
+            ->assertStatus(403);
+    }
+
+    public function test_a_sub_user_can_respond_to_a_chat_message_with_the_permission(): void
+    {
+        [$client, $workspace, $manager] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_respond_approvals' => true],
+        ]);
+        $chatMessage = \App\Models\ChatMessage::create([
+            'workspace_id' => $workspace->id,
+            'sender_type' => User::class,
+            'sender_id' => $manager->id,
+            'message' => 'needs your approval',
+            'type' => 'text',
+            'requires_action' => true,
+            'action_taken' => false,
+        ]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->postJson("/api/chat/{$chatMessage->id}/respond", ['action' => 'approved'])
+            ->assertStatus(200);
+    }
+
+    /**
+     * /contracts/{contract}/client-action sits in the auth:sanctum-only group
+     * (see the signature-bug test below), not the multi-guard auth.any group
+     * — so a real bearer token is required, the same way the signature-bug
+     * test already reaches this route.
+     */
+    public function test_a_sub_user_cannot_take_a_contract_client_action_without_the_permission(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_approve_contracts' => false],
+        ]);
+        $contract = \App\Models\Contract::factory()->create([
+            'workspace_id' => $workspace->id,
+            'status' => 'sent',
+        ]);
+        $token = $subUser->createToken('permission-test')->plainTextToken;
+
+        $this->withHeaders(['Authorization' => 'Bearer ' . $token])
+            ->postJson("/api/contracts/{$contract->id}/client-action", ['action' => 'approved'])
+            ->assertStatus(403);
+    }
+
+    /**
+     * Sanity check for the middleware itself: RequireSubUserPermission only
+     * ever restricts a SubUser instance. The primary Client account has no
+     * permissions map at all and must never be blocked by this guard.
+     */
+    public function test_a_client_is_never_restricted_by_any_subuser_permission_guard(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+
+        $this->actingAs($client, 'client')
+            ->postJson("/api/workspaces/{$workspace->id}/chat", [
+                'message' => 'the primary client account is never gated by subuser.can',
+                'type' => 'text',
+            ])
+            ->assertStatus(201);
     }
 
     /**
@@ -411,6 +611,10 @@ class SubUserTest extends TestCase
      * through to the parent client — the same bug was fixed there and missed
      * here.
      *
+     * can_approve_contracts is granted explicitly here because Phase 2 added
+     * a route guard on that same permission — without it this test would be
+     * stopped at 403 before it ever reached the signature bug it's about.
+     *
      * /contracts/{contract}/client-action sits in the auth:sanctum-only group
      * (see TenantIsolationTest::actingAsClientViaToken's comment), not the
      * multi-guard auth.any group — so actingAs($subUser, 'sub_user') would
@@ -422,7 +626,10 @@ class SubUserTest extends TestCase
     {
         [$client, $workspace] = $this->makeClient();
         $client->update(['signature_data' => 'data:image/png;base64,iVBORw0KGgo=']);
-        $subUser = SubUser::factory()->create(['client_id' => $client->id]);
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_approve_contracts' => true],
+        ]);
         $contract = \App\Models\Contract::factory()->create([
             'workspace_id' => $workspace->id,
             'status' => 'sent',

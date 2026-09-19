@@ -31,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'auth.any' => \App\Http\Middleware\AuthAny::class,
             'scope.workspace' => \App\Http\Middleware\ScopeWorkspace::class,
+            'subuser.can' => \App\Http\Middleware\RequireSubUserPermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

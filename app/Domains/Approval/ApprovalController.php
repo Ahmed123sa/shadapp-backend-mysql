@@ -137,10 +137,15 @@ class ApprovalController extends Controller
 
         abort_unless($approval->workspace->canBeAccessedBy($user), 403, 'غير مصرح لك بالوصول إلى مساحة العمل هذه');
 
+        // This method is staff-only: ApprovalPolicy::respond() (checked by
+        // RespondApprovalRequest::authorize() before this method ever runs)
+        // rejects any principal that isn't a User, so a Client or SubUser
+        // can never reach here. The branch below is defensive/unreachable
+        // in practice — the real client/sub-user approval flow is
+        // ChatController::respond(), where can_respond_approvals is
+        // enforced via the subuser.can route middleware. See
+        // SUBUSER_PLAN.md §2.
         if ($user instanceof \App\Models\SubUser) {
-            if (!($user->hasPermission('can_respond_approvals') ?? false)) {
-                return response()->json(['message' => 'ليس لديك صلاحية الرد على الطلبات'], 403);
-            }
             $signature = $user->client->signature_data ?? null;
         } else {
             $signature = $user instanceof \App\Models\Client ? $user->signature_data : null;

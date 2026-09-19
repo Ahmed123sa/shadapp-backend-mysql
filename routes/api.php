@@ -52,11 +52,11 @@ Route::post('/webhooks/zoom', [ZoomWebhookController::class, 'handle']);
 // Dual-auth routes — allows both admin (sanctum) and client (client) guard
 Route::middleware(['auth.any:sanctum,client,sub_user', 'scope.workspace'])->group(function () {
     Route::get('/workspaces/{workspace}/chat', [ChatController::class, 'index']);
-    Route::post('/workspaces/{workspace}/chat', [ChatController::class, 'store']);
+    Route::post('/workspaces/{workspace}/chat', [ChatController::class, 'store'])->middleware('subuser.can:can_chat');
     Route::post('/workspaces/{workspace}/chat/mark-read', [ChatController::class, 'markAsRead']);
     Route::put('/chat/{chatMessage}', [ChatController::class, 'update']);
     Route::patch('/chat/{chatMessage}/require-action', [ChatController::class, 'toggleRequireAction']);
-    Route::post('/chat/{chatMessage}/respond', [ChatController::class, 'respond']);
+    Route::post('/chat/{chatMessage}/respond', [ChatController::class, 'respond'])->middleware('subuser.can:can_respond_approvals');
 
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
@@ -79,16 +79,22 @@ Route::middleware(['auth.any:sanctum,client,sub_user', 'scope.workspace'])->grou
     // Client-features — accessible by both client and manager
     Route::get('/workspaces/{workspace}/contracts', [ContractController::class, 'index']);
     Route::get('/workspaces/{workspace}/payments', [PaymentController::class, 'index']);
-    Route::post('/workspaces/{workspace}/payments', [PaymentController::class, 'store']);
-    Route::put('/workspaces/{workspace}/payments/{payment}', [PaymentController::class, 'update']);
+    Route::post('/workspaces/{workspace}/payments', [PaymentController::class, 'store'])->middleware('subuser.can:can_upload_payment_proof');
+    Route::put('/workspaces/{workspace}/payments/{payment}', [PaymentController::class, 'update'])->middleware('subuser.can:can_upload_payment_proof');
     Route::get('/workspaces/{workspace}/payment-schedule', [PaymentController::class, 'getSchedule']);
     Route::get('/workspaces/{workspace}/approvals', [ApprovalController::class, 'index']);
+    // No subuser.can guard here: ApprovalPolicy::respond() already restricts
+    // this action to staff (super admin / the workspace's manager) — a
+    // Client or SubUser can never reach this method regardless of any
+    // permission flag. The actual client/sub-user approval flow is
+    // /chat/{chatMessage}/respond above, which is where can_respond_approvals
+    // is enforced. See SUBUSER_PLAN.md §2.
     Route::post('/approvals/{approval}/respond', [ApprovalController::class, 'respond']);
     Route::get('/workspaces/{workspace}/meetings', [MeetingController::class, 'index']);
 
     // Files — client needs to upload/download too
     Route::get('/workspaces/{workspace}/files', [FileController::class, 'index']);
-    Route::post('/workspaces/{workspace}/files', [FileController::class, 'upload']);
+    Route::post('/workspaces/{workspace}/files', [FileController::class, 'upload'])->middleware('subuser.can:can_upload_files');
     Route::delete('/workspaces/{workspace}/files/{file}', [FileController::class, 'destroy']);
     Route::get('/contracts/{contract}/required-documents', [ContractController::class, 'requiredDocuments']);
     Route::get('/contracts/{contract}/files', [ContractController::class, 'files']);
@@ -159,7 +165,7 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     Route::put('/contracts/{contract}', [ContractController::class, 'update']);
     Route::delete('/contracts/{contract}', [ContractController::class, 'destroy']);
     Route::post('/contracts/{contract}/send', [ContractController::class, 'send']);
-    Route::post('/contracts/{contract}/client-action', [ContractController::class, 'clientAction']);
+    Route::post('/contracts/{contract}/client-action', [ContractController::class, 'clientAction'])->middleware('subuser.can:can_approve_contracts');
     Route::post('/contracts/{contract}/company-approve', [ContractController::class, 'companyApprove']);
     Route::post('/contracts/{contract}/complete', [ContractController::class, 'complete']);
     Route::post('/contracts/{contract}/archive', [ContractController::class, 'archive']);
