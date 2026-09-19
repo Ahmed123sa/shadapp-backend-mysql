@@ -8,48 +8,21 @@ use App\Models\AuditLog;
 use App\Support\UploadRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 use App\Http\Controllers\Controller;
 
 class SubUserController extends Controller
 {
-    public function login(Request $request): JsonResponse
-    {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
-        ]);
-
-        $subUser = SubUser::where('email', $request->email)->first();
-
-        if (!$subUser || !Hash::check($request->password, $subUser->password)) {
-            throw ValidationException::withMessages(['email' => ['Invalid credentials.']]);
-        }
-
-        $token = $subUser->createToken('sub-user-token')->plainTextToken;
-
-        return response()->json([
-            'token' => $token,
-            'sub_user' => [
-                'id' => $subUser->id,
-                'name' => $subUser->name,
-                'email' => $subUser->email,
-                'permissions' => $subUser->getPermissionsArray(),
-                'avatar_url' => $subUser->avatar_url,
-            ],
-            'client' => [
-                'id' => $subUser->client->id,
-                'company_name' => $subUser->client->company_name,
-                'contact_person' => $subUser->client->contact_person,
-            ],
-            'workspace_id' => $subUser->client->workspace?->id,
-        ]);
-    }
+    // login() used to live here as a second sub-user login route
+    // (/auth/sub-user/login). It had no caller anywhere in the dashboard,
+    // mobile app, or tests, and unlike AuthController::clientLogin it never
+    // checked whether the parent client was archived — an open side door
+    // around client archiving. Removed along with its route; sub-users log in
+    // through /auth/client/login, which AuthController::clientLogin already
+    // handles (see SUBUSER_PLAN.md §1.3).
 
     public function store(Request $request, Client $client): JsonResponse
     {
-        $this->authorize('create', SubUser::class);
+        $this->authorize('create', [SubUser::class, $client]);
 
         $request->validate([
             'name' => 'required|string|max:255',

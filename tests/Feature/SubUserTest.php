@@ -240,20 +240,18 @@ class SubUserTest extends TestCase
     }
 
     // ---------------------------------------------------------------
-    // 2. Known holes — these assertions are WRONG on purpose.
-    //    Phase 1 of SUBUSER_PLAN.md must flip every one of them.
+    // 1b. Phase 1 fixes (SUBUSER_PLAN.md §1) — these four used to be
+    //     test_HOLE_* asserting the wrong answer; now they assert the fix.
     // ---------------------------------------------------------------
 
     /**
-     * HOLE (plan §1.1): SubUserController::store() calls
-     * authorize('create', SubUser::class) without passing the target client,
-     * and SubUserPolicy::create() returns true for any Client. The route has
-     * no {workspace} segment, so ScopeWorkspace returns early and never runs.
-     *
-     * Client A can therefore plant an account inside client B's tenant and log
-     * in with it. Phase 1 turns this into a 403.
+     * Fixed in Phase 1 §1.1: SubUserController::store() now calls
+     * authorize('create', [SubUser::class, $client]) with the target client,
+     * and SubUserPolicy::create() checks $user->id === $client->id. The route
+     * still has no {workspace} segment, so this policy check is the only
+     * thing standing between one client and another client's tenant.
      */
-    public function test_HOLE_a_client_can_create_a_sub_user_under_another_client(): void
+    public function test_a_client_cannot_create_a_sub_user_under_another_client(): void
     {
         [$clientA] = $this->makeClient();
         [$clientB] = $this->makeClient();
@@ -264,22 +262,17 @@ class SubUserTest extends TestCase
                 'email' => 'planted@example.com',
                 'password' => 'Password1',
             ])
-            ->assertStatus(201);
+            ->assertStatus(403);
 
-        $this->assertDatabaseHas('sub_users', [
-            'email' => 'planted@example.com',
-            'client_id' => $clientB->id,
-        ]);
+        $this->assertDatabaseMissing('sub_users', ['email' => 'planted@example.com']);
     }
 
     /**
-     * HOLE (plan §1.2): SubUserPolicy::create() lets any account manager
-     * create a sub-user, for any client — not just their own. No dashboard or
-     * mobile screen exposes this; it is reachable over the API only. The
-     * agreed design gives the account manager no role here at all, so Phase 1
-     * deletes the User branch rather than narrowing it.
+     * Fixed in Phase 1 §1.2: the User branch was deleted from
+     * SubUserPolicy::create() rather than narrowed — the agreed design gives
+     * the account manager no role in sub-user management at all.
      */
-    public function test_HOLE_an_account_manager_can_create_a_sub_user(): void
+    public function test_an_account_manager_cannot_create_a_sub_user(): void
     {
         [$client] = $this->makeClient();
         $otherManager = User::factory()->create(['role' => User::ROLE_ACCOUNT_MANAGER]);
@@ -290,16 +283,15 @@ class SubUserTest extends TestCase
                 'email' => 'bymanager@example.com',
                 'password' => 'Password1',
             ])
-            ->assertStatus(201);
+            ->assertStatus(403);
     }
 
     /**
-     * HOLE (plan §1.2): SubUserPolicy::view() returns true for any User, with
-     * no tenant check, and the route carries no {workspace}. Sub-user ids are
-     * sequential, so a manager can walk them and harvest the name, email and
-     * permissions of every sub-user in every client company.
+     * Fixed in Phase 1 §1.2: SubUserPolicy::view() no longer has a User
+     * branch, so an account manager gets the same 403 Gate::denies() throws
+     * for any unrecognised principal.
      */
-    public function test_HOLE_any_manager_can_read_any_sub_user(): void
+    public function test_no_manager_can_read_a_sub_user(): void
     {
         [$client] = $this->makeClient();
         $subUser = SubUser::factory()->create(['client_id' => $client->id]);
@@ -307,16 +299,13 @@ class SubUserTest extends TestCase
 
         $this->actingAs($unrelatedManager, 'sanctum')
             ->getJson("/api/sub-users/{$subUser->id}")
-            ->assertStatus(200)
-            ->assertJsonPath('sub_user.email', $subUser->email);
+            ->assertStatus(403);
     }
 
     /**
-     * HOLE (plan §1.2): same for updateProfile(). Changing the email locks the
-     * real employee out, and there is no sub-user password reset or password
-     * change endpoint (plan §4.1), so the account cannot be recovered.
+     * Fixed in Phase 1 §1.2: same for updateProfile().
      */
-    public function test_HOLE_any_manager_can_change_any_sub_users_email(): void
+    public function test_no_manager_can_change_a_sub_users_email(): void
     {
         [$client] = $this->makeClient();
         $subUser = SubUser::factory()->create(['client_id' => $client->id]);
@@ -324,21 +313,35 @@ class SubUserTest extends TestCase
 
         $this->actingAs($unrelatedManager, 'sanctum')
             ->putJson("/api/sub-users/{$subUser->id}/profile", ['email' => 'hijacked@example.com'])
-            ->assertStatus(200);
+            ->assertStatus(403);
 
-        $this->assertSame('hijacked@example.com', $subUser->fresh()->email);
+        $this->assertNotSame('hijacked@example.com', $subUser->fresh()->email);
     }
 
     /**
-     * HOLE (plan §1.3): /auth/sub-user/login is a second login route with no
-     * caller anywhere in the four repos — and it is the one missing the
-     * archived-client guard that /auth/client/login has. Archiving a client
-     * freezes the client but leaves this side door open for its employees.
-     * Phase 1 deletes the route and the controller method.
+     * Fixed in Phase 1 §1.2: ClientController::subUsers() now rejects any
+     * User principal outright, so an account manager cannot list a client's
+     * sub-users either — even one they manage.
      */
-    public function test_HOLE_the_orphan_login_route_ignores_client_archiving(): void
+    public function test_no_manager_can_list_a_clients_sub_users(): void
     {
-        [$client] = $this->makeClient(['status' => 'archived']);
+        [$client, , $manager] = $this->makeClient();
+        SubUser::factory()->create(['client_id' => $client->id]);
+
+        $this->actingAs($manager, 'sanctum')
+            ->getJson("/api/clients/{$client->id}/sub-users")
+            ->assertStatus(403);
+    }
+
+    /**
+     * Fixed in Phase 1 §1.3: /auth/sub-user/login and its controller method
+     * are gone. Sub-users log in through /auth/client/login only, which does
+     * check archiving (see test_a_sub_user_of_an_archived_client_cannot_log_in
+     * _through_the_client_route above).
+     */
+    public function test_the_orphan_login_route_no_longer_exists(): void
+    {
+        [$client] = $this->makeClient();
         $subUser = SubUser::factory()->create([
             'client_id' => $client->id,
             'password' => 'Password1',
@@ -347,10 +350,13 @@ class SubUserTest extends TestCase
         $this->postJson('/api/auth/sub-user/login', [
             'email' => $subUser->email,
             'password' => 'Password1',
-        ])
-            ->assertStatus(200)
-            ->assertJsonPath('sub_user.id', $subUser->id);
+        ])->assertStatus(404);
     }
+
+    // ---------------------------------------------------------------
+    // 2. Known holes — these assertions are WRONG on purpose.
+    //    Later phases of SUBUSER_PLAN.md must flip each one.
+    // ---------------------------------------------------------------
 
     /**
      * HOLE (plan §2): ten of the eleven permissions are never read by the

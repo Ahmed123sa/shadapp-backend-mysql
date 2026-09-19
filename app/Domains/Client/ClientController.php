@@ -541,6 +541,14 @@ class ClientController extends Controller
     {
         $user = $request->user();
 
+        // Sub-users are managed by their owning client alone (SUBUSER_PLAN.md
+        // §1.2) — unlike most other read endpoints on this controller, no
+        // User (account manager / super admin) branch is allowed through at
+        // all, regardless of which client they manage.
+        if ($user instanceof User) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         if ($user instanceof SubUser && $user->client_id !== $client->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
