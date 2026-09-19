@@ -602,18 +602,17 @@ class SubUserTest extends TestCase
     }
 
     /**
-     * HOLE (plan §3): sub_users has no signature_data column, so
-     * ContractController::clientAction() reads null off the model and stores a
-     * contract as client_approved with an empty signature. Eloquent returns
-     * null for a missing attribute without raising, so nothing surfaces.
-     *
-     * ApprovalController::respond() already does this correctly by reaching
-     * through to the parent client — the same bug was fixed there and missed
-     * here.
+     * Fixed in Phase 3 (plan §3): sub_users has no signature_data column, so
+     * ContractController::clientAction() used to read null off the SubUser
+     * model and store the contract as client_approved with an empty
+     * signature — Eloquent returns null for a missing attribute without
+     * raising, so nothing surfaced. The fix reaches through to the parent
+     * client's signature when the signer is a SubUser, the same way
+     * ApprovalController::respond() already did.
      *
      * can_approve_contracts is granted explicitly here because Phase 2 added
      * a route guard on that same permission — without it this test would be
-     * stopped at 403 before it ever reached the signature bug it's about.
+     * stopped at 403 before it ever reached the signature logic it's about.
      *
      * /contracts/{contract}/client-action sits in the auth:sanctum-only group
      * (see TenantIsolationTest::actingAsClientViaToken's comment), not the
@@ -622,7 +621,7 @@ class SubUserTest extends TestCase
      * bearer token is required here, the same way a real client reaches this
      * route in production.
      */
-    public function test_HOLE_a_sub_user_approving_a_contract_stores_no_signature(): void
+    public function test_a_sub_user_approving_a_contract_stores_the_parent_clients_signature(): void
     {
         [$client, $workspace] = $this->makeClient();
         $client->update(['signature_data' => 'data:image/png;base64,iVBORw0KGgo=']);
@@ -642,6 +641,28 @@ class SubUserTest extends TestCase
             ->assertStatus(200);
 
         $this->assertSame('client_approved', $contract->fresh()->status);
-        $this->assertNull($contract->fresh()->client_signature_data);
+        $this->assertSame($client->signature_data, $contract->fresh()->client_signature_data);
+    }
+
+    /**
+     * The primary Client account keeps signing with its own signature —
+     * unaffected by the sub-user fallback above.
+     */
+    public function test_a_client_approving_a_contract_still_stores_its_own_signature(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+        $client->update(['signature_data' => 'data:image/png;base64,iVBORw0KGgo=']);
+        $contract = \App\Models\Contract::factory()->create([
+            'workspace_id' => $workspace->id,
+            'status' => 'sent',
+        ]);
+
+        $token = $client->createToken('isolation-test')->plainTextToken;
+
+        $this->withHeaders(['Authorization' => 'Bearer ' . $token])
+            ->postJson("/api/contracts/{$contract->id}/client-action", ['action' => 'approved'])
+            ->assertStatus(200);
+
+        $this->assertSame($client->signature_data, $contract->fresh()->client_signature_data);
     }
 }

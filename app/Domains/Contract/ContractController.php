@@ -320,13 +320,25 @@ class ContractController extends Controller
 
         $status = $request->action === 'edit_requested' ? 'edit_requested' : 'client_approved';
 
+        // A sub-user acts on behalf of its parent client company and has no
+        // signature of its own — sub_users has no signature_data column, so
+        // $signer->signature_data would silently evaluate to null (Eloquent
+        // doesn't raise on a missing attribute). The signature that belongs
+        // on the contract is always the company's, so reach through to the
+        // parent client when the signer is a sub-user. Same pattern already
+        // used correctly in ApprovalController::respond().
+        $signer = $request->user();
+        $signature = $signer instanceof \App\Models\SubUser
+            ? $signer->client?->signature_data
+            : $signer->signature_data;
+
         $contract->update([
             'status' => $status,
             'client_signed_at' => $request->action === 'approved' ? now() : null,
             // Snapshot the signature as it exists right now, at the moment of
             // approval — not whatever ends up on the client's profile later.
             // See ContractPdfService for how this is used when rendering.
-            'client_signature_data' => $request->action === 'approved' ? $request->user()->signature_data : null,
+            'client_signature_data' => $request->action === 'approved' ? $signature : null,
             'edit_reason' => $request->action === 'edit_requested' ? ($request->reason ?? null) : null,
         ]);
 
