@@ -8,6 +8,7 @@ use App\Models\AuditLog;
 use App\Support\UploadRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use App\Http\Controllers\Controller;
 
 class SubUserController extends Controller
@@ -153,5 +154,53 @@ class SubUserController extends Controller
                 'avatar_url' => $subUser->fresh()->avatar_url,
             ],
         ]);
+    }
+
+    /**
+     * SUBUSER_PLAN.md §4.1. Before this, a sub-user who forgot their
+     * password had no way back in — updateProfile() never accepted a
+     * password field, and password reset is deliberately excluded for
+     * sub-users (see PasswordResetController). The only fix was the client
+     * deleting the account and creating a new one, losing every audit trail
+     * tied to the old id.
+     *
+     * Two actors, two rules: the owning client resets a sub-user's password
+     * without knowing the old one (same as a company admin resetting an
+     * employee's password); the sub-user changing their own must prove they
+     * still know the current one first.
+     */
+    public function changePassword(Request $request, SubUser $subUser): JsonResponse
+    {
+        $this->authorize('changePassword', $subUser);
+
+        $actor = $request->user();
+
+        $rules = [
+            'password' => 'required|string|min:8|regex:/[A-Za-z]/|regex:/[0-9]/',
+        ];
+        if ($actor instanceof SubUser) {
+            $rules['current_password'] = 'required|string';
+        }
+        $request->validate($rules);
+
+        if ($actor instanceof SubUser && ! Hash::check($request->current_password, $subUser->password)) {
+            return response()->json(['message' => 'كلمة المرور الحالية غير صحيحة'], 422);
+        }
+
+        $subUser->update(['password' => $request->password]);
+
+        // Invalidate every existing token so a session started with the old
+        // password (or a colleague who knew it) can't keep using it.
+        $subUser->tokens()->delete();
+
+        AuditLog::create([
+            'auditable_type' => SubUser::class,
+            'auditable_id' => $subUser->id,
+            'user_id' => $request->user()?->id,
+            'action' => 'sub_user.password_changed',
+            'ip_address' => $request->ip(),
+        ]);
+
+        return response()->json(['message' => 'تم تغيير كلمة المرور بنجاح']);
     }
 }

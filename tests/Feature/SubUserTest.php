@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -664,5 +665,126 @@ class SubUserTest extends TestCase
             ->assertStatus(200);
 
         $this->assertSame($client->signature_data, $contract->fresh()->client_signature_data);
+    }
+
+    // ---------------------------------------------------------------
+    // 4. Phase 4 (SUBUSER_PLAN.md §4.1) — password change.
+    //
+    // Deactivation (the original §4.2/§4.3 draft) was dropped: the product
+    // decision is that permanent deletion (already covered above by
+    // test_a_client_can_delete_its_own_sub_user) is the only lifecycle exit
+    // for a sub-user — no deactivate/reactivate pair. Token revocation on
+    // password change is kept, since it's good practice independent of
+    // deactivation.
+    // ---------------------------------------------------------------
+
+    public function test_a_client_can_change_a_sub_users_password_without_the_old_one(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'password' => 'OldPassword1',
+        ]);
+
+        $this->actingAs($client, 'client')
+            ->patchJson("/api/sub-users/{$subUser->id}/password", [
+                'password' => 'NewPassword2',
+            ])
+            ->assertStatus(200);
+
+        $this->assertTrue(Hash::check('NewPassword2', $subUser->fresh()->password));
+    }
+
+    public function test_a_client_cannot_change_another_clients_sub_users_password(): void
+    {
+        [$clientA] = $this->makeClient();
+        [$clientB] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $clientB->id]);
+
+        $this->actingAs($clientA, 'client')
+            ->patchJson("/api/sub-users/{$subUser->id}/password", [
+                'password' => 'NewPassword2',
+            ])
+            ->assertStatus(403);
+    }
+
+    public function test_a_sub_user_can_change_their_own_password_with_the_current_one(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'password' => 'OldPassword1',
+        ]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->patchJson("/api/sub-users/{$subUser->id}/password", [
+                'current_password' => 'OldPassword1',
+                'password' => 'NewPassword2',
+            ])
+            ->assertStatus(200);
+
+        $this->assertTrue(Hash::check('NewPassword2', $subUser->fresh()->password));
+    }
+
+    public function test_a_sub_user_cannot_change_their_own_password_with_the_wrong_current_one(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'password' => 'OldPassword1',
+        ]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->patchJson("/api/sub-users/{$subUser->id}/password", [
+                'current_password' => 'WrongPassword9',
+                'password' => 'NewPassword2',
+            ])
+            ->assertStatus(422);
+
+        $this->assertTrue(Hash::check('OldPassword1', $subUser->fresh()->password));
+    }
+
+    public function test_a_sub_user_cannot_change_their_own_password_without_supplying_the_current_one(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'password' => 'OldPassword1',
+        ]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->patchJson("/api/sub-users/{$subUser->id}/password", [
+                'password' => 'NewPassword2',
+            ])
+            ->assertStatus(422);
+    }
+
+    public function test_changing_a_sub_users_password_revokes_their_existing_tokens(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'password' => 'OldPassword1',
+        ]);
+        $oldToken = $subUser->createToken('old-session')->plainTextToken;
+        $clientToken = $client->createToken('isolation-test')->plainTextToken;
+
+        $this->withHeaders(['Authorization' => 'Bearer ' . $clientToken])
+            ->patchJson("/api/sub-users/{$subUser->id}/password", [
+                'password' => 'NewPassword2',
+            ])
+            ->assertStatus(200);
+
+        $this->assertSame(0, $subUser->tokens()->count());
+
+        // The sanctum guard resolved on the request above is cached by the
+        // AuthManager and would otherwise keep authenticating as the client
+        // from that request instead of re-evaluating this new bearer token
+        // (see TenantIsolationTest::actingAsClientViaToken's comment).
+        $this->app->make('auth')->forgetGuards();
+
+        $this->withHeaders(['Authorization' => 'Bearer ' . $oldToken])
+            ->getJson("/api/sub-users/{$subUser->id}")
+            ->assertStatus(401);
     }
 }

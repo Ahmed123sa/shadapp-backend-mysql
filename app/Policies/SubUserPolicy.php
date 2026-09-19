@@ -62,4 +62,21 @@ class SubUserPolicy
         }
         return false;
     }
+
+    /**
+     * Same actors as updateProfile — the owning client, or the sub-user
+     * acting on their own account. SubUserController::changePassword()
+     * decides which validation applies (the client skips current_password,
+     * the sub-user must supply it).
+     */
+    public function changePassword($user, SubUser $subUser): bool
+    {
+        if ($user instanceof Client) {
+            return $subUser->client_id === $user->id;
+        }
+        if ($user instanceof SubUser) {
+            return $user->id === $subUser->id;
+        }
+        return false;
+    }
 }

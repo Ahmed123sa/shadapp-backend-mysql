@@ -105,6 +105,7 @@ Route::middleware(['auth.any:sanctum,client,sub_user', 'scope.workspace'])->grou
     Route::get('/sub-users/{subUser}', [SubUserController::class, 'show']);
     Route::match(['put', 'post'], '/sub-users/{subUser}/profile', [SubUserController::class, 'updateProfile']);
     Route::patch('/sub-users/{subUser}/permissions', [SubUserController::class, 'updatePermissions']);
+    Route::patch('/sub-users/{subUser}/password', [SubUserController::class, 'changePassword']);
     Route::delete('/sub-users/{subUser}', [SubUserController::class, 'destroy']);
 });
 
