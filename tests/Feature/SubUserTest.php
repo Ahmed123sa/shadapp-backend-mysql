@@ -787,4 +787,89 @@ class SubUserTest extends TestCase
             ->getJson("/api/sub-users/{$subUser->id}")
             ->assertStatus(401);
     }
+
+    // ---------------------------------------------------------------
+    // 5. Phase 5 (SUBUSER_PLAN.md §5.1/§5.2/§5.4) — small leaks.
+    // ---------------------------------------------------------------
+
+    public function test_badge_counts_are_zeroed_for_tabs_a_sub_user_cannot_view(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_chat' => true], // no can_view_payments etc.
+        ]);
+        \App\Models\Payment::factory()->create(['workspace_id' => $workspace->id, 'client_id' => $client->id, 'status' => 'pending']);
+        \App\Models\Contract::factory()->create(['workspace_id' => $workspace->id, 'status' => 'sent']);
+        \App\Models\Approval::factory()->create(['workspace_id' => $workspace->id, 'status' => 'pending']);
+        \App\Models\FileEntry::create([
+            'workspace_id' => $workspace->id,
+            'uploaded_by_type' => Client::class,
+            'uploaded_by_id' => $client->id,
+            'file_url' => '/storage/x.pdf',
+            'name' => 'x.pdf',
+            'status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($subUser, 'sub_user')->getJson('/api/badge-counts');
+
+        $response->assertStatus(200);
+        $this->assertSame(0, $response->json('contracts'));
+        $this->assertSame(0, $response->json('approvals'));
+        $this->assertSame(0, $response->json('payments'));
+        $this->assertSame(0, $response->json('files'));
+    }
+
+    public function test_badge_counts_still_show_for_tabs_a_sub_user_can_view(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_view_payments' => true],
+        ]);
+        \App\Models\Payment::factory()->create(['workspace_id' => $workspace->id, 'client_id' => $client->id, 'status' => 'pending']);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->getJson('/api/badge-counts')
+            ->assertStatus(200)
+            ->assertJsonPath('payments', 1);
+    }
+
+    public function test_badge_counts_for_the_primary_client_are_never_restricted_by_permissions(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+        \App\Models\Payment::factory()->create(['workspace_id' => $workspace->id, 'client_id' => $client->id, 'status' => 'pending']);
+
+        $this->actingAs($client, 'client')
+            ->getJson('/api/badge-counts')
+            ->assertStatus(200)
+            ->assertJsonPath('payments', 1);
+    }
+
+    public function test_a_sub_user_cannot_list_its_own_colleagues(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id]);
+        SubUser::factory()->create(['client_id' => $client->id]);
+
+        $this->actingAs($subUser, 'sub_user')
+            ->getJson("/api/clients/{$client->id}/sub-users")
+            ->assertStatus(403);
+    }
+
+    public function test_updating_a_sub_users_profile_writes_an_audit_log_entry(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id, 'name' => 'Old Name']);
+
+        $this->actingAs($client, 'client')
+            ->putJson("/api/sub-users/{$subUser->id}/profile", ['name' => 'New Name'])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'auditable_type' => SubUser::class,
+            'auditable_id' => $subUser->id,
+            'action' => 'sub_user.profile_updated',
+        ]);
+    }
 }

@@ -144,6 +144,19 @@ class SubUserController extends Controller
 
         $subUser->update($updateData);
 
+        // store()/destroy()/updatePermissions()/changePassword() all log to
+        // AuditLog; this one didn't, even though changing a sub-user's email
+        // is effectively a handover of the account's login (SUBUSER_PLAN.md
+        // §5.4).
+        AuditLog::create([
+            'auditable_type' => SubUser::class,
+            'auditable_id' => $subUser->id,
+            'user_id' => $request->user()?->id,
+            'action' => 'sub_user.profile_updated',
+            'metadata' => ['fields' => array_keys($updateData)],
+            'ip_address' => $request->ip(),
+        ]);
+
         return response()->json([
             'sub_user' => [
                 'id' => $subUser->id,

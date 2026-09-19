@@ -25,7 +25,7 @@ class DashboardController extends Controller
         }
 
         if ($user instanceof SubUser) {
-            return $this->clientCounts($user->client);
+            return $this->clientCounts($user->client, $user);
         }
 
         $role = $user->role ?? '';
@@ -48,7 +48,16 @@ class DashboardController extends Controller
         ]);
     }
 
-    private function clientCounts(Client $client): JsonResponse
+    /**
+     * $actingAs is null when the client itself is asking (sees everything it
+     * has access to). When a SubUser is asking on behalf of its parent
+     * client, each count is zeroed unless the sub-user holds the matching
+     * can_view_* permission — otherwise a sub-user locked out of, say, the
+     * payments tab would still see a live count of pending payments via the
+     * badge, leaking through the side the UI never renders (SUBUSER_PLAN.md
+     * §5.1).
+     */
+    private function clientCounts(Client $client, ?SubUser $actingAs = null): JsonResponse
     {
         $ws = $client->workspace;
         if (!$ws) {
@@ -84,6 +93,14 @@ class DashboardController extends Controller
         $files = FileEntry::where('workspace_id', $wsId)
             ->where('status', 'pending')
             ->count();
+
+        if ($actingAs instanceof SubUser) {
+            $chat = $actingAs->hasPermission('can_chat') ? $chat : 0;
+            $contracts = $actingAs->hasPermission('can_view_contracts') ? $contracts : 0;
+            $approvals = $actingAs->hasPermission('can_view_approvals') ? $approvals : 0;
+            $payments = $actingAs->hasPermission('can_view_payments') ? $payments : 0;
+            $files = $actingAs->hasPermission('can_view_files') ? $files : 0;
+        }
 
         return response()->json([
             'chat' => $chat,

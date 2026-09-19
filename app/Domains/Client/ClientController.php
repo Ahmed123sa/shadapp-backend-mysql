@@ -3,7 +3,6 @@
 namespace App\Domains\Client;
 
 use App\Models\Client;
-use App\Models\SubUser;
 use App\Models\User;
 use App\Models\AuditLog;
 use App\Models\Workspace;
@@ -549,11 +548,15 @@ class ClientController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if ($user instanceof SubUser && $user->client_id !== $client->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        if ($user instanceof Client && $user->id !== $client->id) {
+        // No SubUser branch here on purpose (SUBUSER_PLAN.md §5.2): a
+        // sub-user could never add or remove a colleague (the policy already
+        // blocks that), but this endpoint used to hand back the full list —
+        // every colleague's name, email and permission set — to any sub-user
+        // asking about their own client. That's not something a "no colleague
+        // list" product decision should leak through a read endpoint just
+        // because the write endpoints are already guarded. Only the primary
+        // client account can see this list.
+        if (! $user instanceof Client || $user->id !== $client->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
