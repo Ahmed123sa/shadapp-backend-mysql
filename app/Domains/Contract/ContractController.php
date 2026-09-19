@@ -342,11 +342,30 @@ class ContractController extends Controller
             'edit_reason' => $request->action === 'edit_requested' ? ($request->reason ?? null) : null,
         ]);
 
+        // `client_id` here is the contract's owning client — not
+        // "$signer->id" as it used to read. This route is reachable by a
+        // User (staff), a Client, or a SubUser (Workspace::canBeAccessedBy
+        // allows all three), but audit_logs.client_id is a foreign key into
+        // `clients`. Writing the signer's own id unconditionally worked by
+        // coincidence when the signer was the Client, but threw a 1452 FK
+        // violation whenever a sub-user approved a contract — a real,
+        // tested path (see "a sub user approving a contract stores the
+        // parent client's signature"). Same class of bug as
+        // SubUserController's audit_logs.user_id fix; 'acted_by' keeps
+        // track of which of the three actually signed.
         AuditLog::create([
             'auditable_type' => Contract::class,
             'auditable_id' => $contract->id,
-            'client_id' => $request->user()->id,
+            'client_id' => $contract->workspace->client_id,
+            'user_id' => $signer instanceof User ? $signer->id : null,
             'action' => 'contract.client_' . $request->action,
+            'metadata' => [
+                'acted_by' => match (true) {
+                    $signer instanceof \App\Models\SubUser => 'sub_user:' . $signer->id,
+                    $signer instanceof \App\Models\Client => 'client',
+                    default => 'staff',
+                },
+            ],
             'ip_address' => $request->ip(),
         ]);
 

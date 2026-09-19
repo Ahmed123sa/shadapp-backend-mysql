@@ -668,6 +668,63 @@ class SubUserTest extends TestCase
         $this->assertSame($client->signature_data, $contract->fresh()->client_signature_data);
     }
 
+    /**
+     * 18 Sept 2026 — ContractController::clientAction() used to log
+     * 'client_id' => $signer->id unconditionally. That's correct when the
+     * signer is the Client itself, but a sub-user's id was being written
+     * into a column FK'd to `clients`, throwing a 1452 violation on
+     * MySQL/Postgres (SQLite doesn't enforce it, so this passed for months).
+     * client_id must always be the contract's owning client regardless of
+     * who signed; 'acted_by' in metadata is what distinguishes the signer.
+     */
+    public function test_a_sub_user_approving_a_contract_logs_the_owning_client_not_the_sub_users_id(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+        $subUser = SubUser::factory()->create([
+            'client_id' => $client->id,
+            'permissions' => ['can_approve_contracts' => true],
+        ]);
+        $contract = \App\Models\Contract::factory()->create([
+            'workspace_id' => $workspace->id,
+            'status' => 'sent',
+        ]);
+
+        $token = $subUser->createToken('isolation-test')->plainTextToken;
+
+        $this->withHeaders(['Authorization' => 'Bearer ' . $token])
+            ->postJson("/api/contracts/{$contract->id}/client-action", ['action' => 'approved'])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'contract.client_approved',
+            'client_id' => $client->id,
+            'user_id' => null,
+            'metadata' => json_encode(['acted_by' => 'sub_user:' . $subUser->id]),
+        ]);
+    }
+
+    public function test_a_client_approving_a_contract_logs_acted_by_client(): void
+    {
+        [$client, $workspace] = $this->makeClient();
+        $contract = \App\Models\Contract::factory()->create([
+            'workspace_id' => $workspace->id,
+            'status' => 'sent',
+        ]);
+
+        $token = $client->createToken('isolation-test')->plainTextToken;
+
+        $this->withHeaders(['Authorization' => 'Bearer ' . $token])
+            ->postJson("/api/contracts/{$contract->id}/client-action", ['action' => 'approved'])
+            ->assertStatus(200);
+
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'contract.client_approved',
+            'client_id' => $client->id,
+            'user_id' => null,
+            'metadata' => json_encode(['acted_by' => 'client']),
+        ]);
+    }
+
     // ---------------------------------------------------------------
     // 4. Phase 4 (SUBUSER_PLAN.md §4.1) — password change.
     //

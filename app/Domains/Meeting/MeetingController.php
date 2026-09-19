@@ -37,7 +37,14 @@ class MeetingController extends Controller
 
     public function store(StoreMeetingRequest $request, Workspace $workspace): JsonResponse
     {
-        if (!$request->user()->isSuperAdmin() && $workspace->manager_id !== $request->user()->id) {
+        // Meetings are staff-scheduled only, but this route has no {client}
+        // segment for ScopeWorkspace's canBeAccessedBy() check to reject a
+        // Client/SubUser outright — it lets all three actor types through
+        // when they belong to this workspace. Client/SubUser have no
+        // isSuperAdmin() method, so calling it on them directly (as this
+        // used to) was a fatal error instead of a clean 403.
+        $actor = $request->user();
+        if (!$actor instanceof User || (!$actor->isSuperAdmin() && $workspace->manager_id !== $actor->id)) {
             return response()->json(['message' => 'غير مصرح'], 403);
         }
 
