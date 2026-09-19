@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AuditLog;
 use App\Models\Client;
 use App\Models\SubUser;
 use App\Models\User;
@@ -917,5 +918,123 @@ class SubUserTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('sub_user.name', 'Employee')
             ->assertJsonPath('sub_user.permissions.can_chat', true);
+    }
+
+    // ---------------------------------------------------------------
+    // 7. Transaction safety net (18 Sept 2026) — closes a bug report:
+    // creating/editing a sub-user showed an error in the UI, but a refresh
+    // revealed it had actually gone through. Every write below is followed
+    // by an AuditLog::create() call with no transaction around the pair, so
+    // an AuditLog failure left the first write committed while the client
+    // still got a 500. These tests force that failure via a `creating`
+    // model event and assert the whole request rolls back instead.
+    // ---------------------------------------------------------------
+
+    public function test_a_failing_audit_log_rolls_back_a_new_sub_user(): void
+    {
+        [$client] = $this->makeClient();
+
+        AuditLog::creating(function () {
+            throw new \RuntimeException('forced failure for test');
+        });
+
+        try {
+            $this->actingAs($client, 'client')
+                ->postJson("/api/clients/{$client->id}/sub-users", [
+                    'name' => 'Accountant',
+                    'email' => 'rollback-create@example.com',
+                    'password' => 'Password1',
+                ])
+                ->assertStatus(500);
+
+            $this->assertDatabaseMissing('sub_users', ['email' => 'rollback-create@example.com']);
+        } finally {
+            AuditLog::flushEventListeners();
+        }
+    }
+
+    public function test_a_failing_audit_log_rolls_back_a_permissions_update(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id, 'permissions' => ['can_chat' => false]]);
+
+        AuditLog::creating(function () {
+            throw new \RuntimeException('forced failure for test');
+        });
+
+        try {
+            $this->actingAs($client, 'client')
+                ->patchJson("/api/sub-users/{$subUser->id}/permissions", ['permissions' => ['can_chat' => true]])
+                ->assertStatus(500);
+
+            $this->assertFalse($subUser->fresh()->hasPermission('can_chat'));
+        } finally {
+            AuditLog::flushEventListeners();
+        }
+    }
+
+    public function test_a_failing_audit_log_rolls_back_a_sub_user_deletion(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id]);
+
+        AuditLog::creating(function () {
+            throw new \RuntimeException('forced failure for test');
+        });
+
+        try {
+            $this->actingAs($client, 'client')
+                ->deleteJson("/api/sub-users/{$subUser->id}")
+                ->assertStatus(500);
+
+            $this->assertDatabaseHas('sub_users', ['id' => $subUser->id]);
+        } finally {
+            AuditLog::flushEventListeners();
+        }
+    }
+
+    public function test_a_failing_audit_log_rolls_back_a_profile_update(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id, 'name' => 'Original Name']);
+
+        AuditLog::creating(function () {
+            throw new \RuntimeException('forced failure for test');
+        });
+
+        try {
+            $this->actingAs($client, 'client')
+                ->putJson("/api/sub-users/{$subUser->id}/profile", ['name' => 'New Name'])
+                ->assertStatus(500);
+
+            $this->assertSame('Original Name', $subUser->fresh()->name);
+        } finally {
+            AuditLog::flushEventListeners();
+        }
+    }
+
+    public function test_a_failing_audit_log_rolls_back_a_password_change(): void
+    {
+        [$client] = $this->makeClient();
+        $subUser = SubUser::factory()->create(['client_id' => $client->id, 'password' => 'OldPassword1']);
+        $subUser->createToken('old-session');
+
+        AuditLog::creating(function () {
+            throw new \RuntimeException('forced failure for test');
+        });
+
+        try {
+            $this->actingAs($client, 'client')
+                ->patchJson("/api/sub-users/{$subUser->id}/password", ['password' => 'NewPassword2'])
+                ->assertStatus(500);
+
+            $this->assertTrue(Hash::check('OldPassword1', $subUser->fresh()->password));
+            $this->assertDatabaseHas('personal_access_tokens', [
+                'tokenable_id' => $subUser->id,
+                'tokenable_type' => SubUser::class,
+            ]);
+        } finally {
+            AuditLog::flushEventListeners();
+        }
     }
 }

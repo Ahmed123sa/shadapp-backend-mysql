@@ -8,6 +8,7 @@ use App\Models\AuditLog;
 use App\Support\UploadRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use App\Http\Controllers\Controller;
 
@@ -32,22 +33,33 @@ class SubUserController extends Controller
             'date_of_birth' => 'nullable|date',
         ]);
 
-        $subUser = $client->subUsers()->create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => $request->password,
-            'permissions' => [],
-            'date_of_birth' => $request->date_of_birth,
-        ]);
+        // Wrapped in a transaction so a failure writing the AuditLog row
+        // (mismatched column between engines, DB hiccup, etc.) rolls the
+        // whole request back instead of leaving a sub-user that was
+        // "created" from the database's point of view while the client
+        // received a 500 and never found out — the exact bug report this
+        // was added to close: create fails in the UI, but a refresh shows
+        // the account exists anyway.
+        $subUser = DB::transaction(function () use ($request, $client) {
+            $subUser = $client->subUsers()->create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => $request->password,
+                'permissions' => [],
+                'date_of_birth' => $request->date_of_birth,
+            ]);
 
-        AuditLog::create([
-            'auditable_type' => SubUser::class,
-            'auditable_id' => $subUser->id,
-            'user_id' => $request->user()?->id,
-            'action' => 'sub_user.created',
-            'metadata' => ['email' => $subUser->email],
-            'ip_address' => $request->ip(),
-        ]);
+            AuditLog::create([
+                'auditable_type' => SubUser::class,
+                'auditable_id' => $subUser->id,
+                'user_id' => $request->user()?->id,
+                'action' => 'sub_user.created',
+                'metadata' => ['email' => $subUser->email],
+                'ip_address' => $request->ip(),
+            ]);
+
+            return $subUser;
+        });
 
         return response()->json(['sub_user' => $this->present($subUser)], 201);
     }
@@ -106,16 +118,20 @@ class SubUserController extends Controller
             ->mapWithKeys(fn ($value, $key) => [$key => (bool) $value])
             ->toArray();
 
-        $subUser->update(['permissions' => $permissions]);
+        // See store() — same rollback reasoning applies to every write below
+        // that's followed by an AuditLog::create() call.
+        DB::transaction(function () use ($request, $subUser, $permissions) {
+            $subUser->update(['permissions' => $permissions]);
 
-        AuditLog::create([
-            'auditable_type' => SubUser::class,
-            'auditable_id' => $subUser->id,
-            'user_id' => $request->user()?->id,
-            'action' => 'sub_user.permissions_updated',
-            'metadata' => ['permissions' => $permissions],
-            'ip_address' => $request->ip(),
-        ]);
+            AuditLog::create([
+                'auditable_type' => SubUser::class,
+                'auditable_id' => $subUser->id,
+                'user_id' => $request->user()?->id,
+                'action' => 'sub_user.permissions_updated',
+                'metadata' => ['permissions' => $permissions],
+                'ip_address' => $request->ip(),
+            ]);
+        });
 
         return response()->json(['sub_user' => $this->present($subUser->fresh())]);
     }
@@ -124,15 +140,17 @@ class SubUserController extends Controller
     {
         $this->authorize('delete', $subUser);
 
-        $subUser->delete();
+        DB::transaction(function () use ($request, $subUser) {
+            $subUser->delete();
 
-        AuditLog::create([
-            'auditable_type' => SubUser::class,
-            'auditable_id' => $subUser->id,
-            'user_id' => $request->user()?->id,
-            'action' => 'sub_user.deleted',
-            'ip_address' => $request->ip(),
-        ]);
+            AuditLog::create([
+                'auditable_type' => SubUser::class,
+                'auditable_id' => $subUser->id,
+                'user_id' => $request->user()?->id,
+                'action' => 'sub_user.deleted',
+                'ip_address' => $request->ip(),
+            ]);
+        });
 
         return response()->json(['message' => 'تم حذف المستخدم']);
     }
@@ -156,20 +174,27 @@ class SubUserController extends Controller
             $updateData['avatar_url'] = \Illuminate\Support\Facades\Storage::url($path);
         }
 
-        $subUser->update($updateData);
+        // The avatar file itself is written to storage before the
+        // transaction (a DB transaction can't roll back a filesystem
+        // write), so a failure below leaves an orphaned upload rather than
+        // a half-applied profile update — an acceptable trade-off, and the
+        // same one store()'s avatar-adjacent fields would make.
+        DB::transaction(function () use ($request, $subUser, $updateData) {
+            $subUser->update($updateData);
 
-        // store()/destroy()/updatePermissions()/changePassword() all log to
-        // AuditLog; this one didn't, even though changing a sub-user's email
-        // is effectively a handover of the account's login (SUBUSER_PLAN.md
-        // §5.4).
-        AuditLog::create([
-            'auditable_type' => SubUser::class,
-            'auditable_id' => $subUser->id,
-            'user_id' => $request->user()?->id,
-            'action' => 'sub_user.profile_updated',
-            'metadata' => ['fields' => array_keys($updateData)],
-            'ip_address' => $request->ip(),
-        ]);
+            // store()/destroy()/updatePermissions()/changePassword() all log to
+            // AuditLog; this one didn't, even though changing a sub-user's email
+            // is effectively a handover of the account's login (SUBUSER_PLAN.md
+            // §5.4).
+            AuditLog::create([
+                'auditable_type' => SubUser::class,
+                'auditable_id' => $subUser->id,
+                'user_id' => $request->user()?->id,
+                'action' => 'sub_user.profile_updated',
+                'metadata' => ['fields' => array_keys($updateData)],
+                'ip_address' => $request->ip(),
+            ]);
+        });
 
         return response()->json(['sub_user' => $this->present($subUser->fresh())]);
     }
@@ -227,19 +252,21 @@ class SubUserController extends Controller
             return response()->json(['message' => 'كلمة المرور الحالية غير صحيحة'], 422);
         }
 
-        $subUser->update(['password' => $request->password]);
+        DB::transaction(function () use ($request, $subUser) {
+            $subUser->update(['password' => $request->password]);
 
-        // Invalidate every existing token so a session started with the old
-        // password (or a colleague who knew it) can't keep using it.
-        $subUser->tokens()->delete();
+            // Invalidate every existing token so a session started with the old
+            // password (or a colleague who knew it) can't keep using it.
+            $subUser->tokens()->delete();
 
-        AuditLog::create([
-            'auditable_type' => SubUser::class,
-            'auditable_id' => $subUser->id,
-            'user_id' => $request->user()?->id,
-            'action' => 'sub_user.password_changed',
-            'ip_address' => $request->ip(),
-        ]);
+            AuditLog::create([
+                'auditable_type' => SubUser::class,
+                'auditable_id' => $subUser->id,
+                'user_id' => $request->user()?->id,
+                'action' => 'sub_user.password_changed',
+                'ip_address' => $request->ip(),
+            ]);
+        });
 
         return response()->json(['message' => 'تم تغيير كلمة المرور بنجاح']);
     }
