@@ -69,6 +69,30 @@ class SubUserController extends Controller
         return response()->json(['sub_user' => $this->present($subUser)]);
     }
 
+    /**
+     * The 11 keys accepted here (SubUser::PERMISSION_KEYS) split into a
+     * view/action pair per area, except chat which has no separate view
+     * flag. Anyone adding a new permission should know which half it goes
+     * in before picking a name — see DATA_SAFETY_PLAN.md §7.2/§7.3 for the
+     * full reasoning.
+     *
+     * | Area       | View (UI-only, not enforced here)  | Action (guarded by `subuser.can:<key>` in routes/api.php) |
+     * |------------|-------------------------------------|-------------------------------------------------------------|
+     * | Chat       | —                                   | can_chat                                                     |
+     * | Contracts  | can_view_contracts                 | can_approve_contracts                                        |
+     * | Payments   | can_view_payments                  | can_upload_payment_proof                                     |
+     * | Approvals  | can_view_approvals                 | can_respond_approvals                                        |
+     * | Files      | can_view_files                     | can_upload_files                                             |
+     * | Meetings   | can_view_meetings                  | can_join_meetings (no dedicated guarded route today)         |
+     *
+     * View flags are read by the dashboard/mobile UI and by
+     * DashboardController::clientCounts() (which zeroes a badge count when
+     * the flag is off) — never by a server-side guard, because the data
+     * behind them belongs to the same company the sub-user works for and
+     * tenant isolation already bounds it there. Action flags gate a real
+     * write (approval, signature, upload) via RequireSubUserPermission and
+     * must stay guarded on the route, not just hidden in the UI.
+     */
     public function updatePermissions(Request $request, SubUser $subUser): JsonResponse
     {
         $this->authorize('updatePermissions', $subUser);
