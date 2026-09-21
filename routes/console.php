@@ -21,3 +21,7 @@ Schedule::command('birthdays:send-reminders')->dailyAt('09:00');
 // could still be running when the next one is due, and two concurrent dumps
 // would compete for the same disk and I/O for no benefit.
 Schedule::command('db:backup')->dailyAt('03:00')->withoutOverlapping();
+
+// Staggered after the backup so the two aren't competing, and so the dump
+// captures the day's attempts before they're pruned rather than after.
+Schedule::command('login-attempts:prune')->dailyAt('04:00')->withoutOverlapping();

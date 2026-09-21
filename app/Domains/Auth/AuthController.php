@@ -3,6 +3,7 @@
 namespace App\Domains\Auth;
 
 use App\Models\AuditLog;
+use App\Models\LoginAttempt;
 use App\Models\User;
 use App\Models\Client;
 use App\Models\SubUser;
@@ -63,12 +64,80 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * 20 Sept 2026 — records a rejected sign-in. See the
+     * create_login_attempts_table migration for why these go to their own
+     * table instead of audit_logs, and what is deliberately not stored.
+     *
+     * Note the inverted failure policy compared to recordLogin() above.
+     * A successful login writes its audit row inside the same transaction
+     * as the token, because a token issued with no record of it is exactly
+     * the gap that closes. Here the opposite holds: this is a diagnostic
+     * aid, not part of the auth decision, so a problem writing it must not
+     * turn a clean "wrong credentials" 422 into a 500. Hence the swallow —
+     * reported, never rethrown.
+     */
+    private function recordFailedLogin(Request $request, string $endpoint, string $reason): void
+    {
+        // The mobile app signs everyone in by trying /auth/login first and
+        // falling back to /auth/client/login when that rejects them
+        // (AuthProvider.authenticate). So *every* client and sub-user login
+        // from mobile necessarily produces one staff-endpoint miss first.
+        // Recording those would roughly double this table with rows that
+        // describe normal, successful usage, and would make a healthy system
+        // look like it is under constant attack — burying the real
+        // signal this table exists to surface.
+        //
+        // Scoped as tightly as possible: only an unknown_email miss on the
+        // staff endpoint is skipped, and only when that email really does
+        // belong to a client or sub-user. A wrong password against a real
+        // staff account, or a deactivated one, is always recorded.
+        if (
+            $endpoint === LoginAttempt::ENDPOINT_STAFF
+            && $reason === LoginAttempt::REASON_UNKNOWN_EMAIL
+            && $this->emailBelongsToClientSide($request->email)
+        ) {
+            return;
+        }
+
+        try {
+            LoginAttempt::create([
+                'email' => $request->email,
+                'ip_address' => $request->ip(),
+                'endpoint' => $endpoint,
+                'reason' => $reason,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function emailBelongsToClientSide(?string $email): bool
+    {
+        if ($email === null) {
+            return false;
+        }
+
+        return Client::where('email', $email)->exists()
+            || SubUser::where('email', $email)->exists();
+    }
+
     public function login(LoginRequest $request): JsonResponse
     {
 
         $user = User::where('email', $request->email)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
+            // The response is identical either way on purpose (so this
+            // endpoint can't be used to find out which emails are
+            // registered); the distinction is kept server-side only,
+            // where support needs it.
+            $this->recordFailedLogin(
+                $request,
+                LoginAttempt::ENDPOINT_STAFF,
+                $user ? LoginAttempt::REASON_WRONG_PASSWORD : LoginAttempt::REASON_UNKNOWN_EMAIL,
+            );
+
             throw ValidationException::withMessages(['email' => ['Invalid credentials.']]);
         }
 
@@ -77,6 +146,8 @@ class AuthController extends Controller
         // the credential check above still runs first — no timing signal
         // about whether a deactivated account's password is correct.
         if (!$user->isActive()) {
+            $this->recordFailedLogin($request, LoginAttempt::ENDPOINT_STAFF, LoginAttempt::REASON_ACCOUNT_INACTIVE);
+
             throw ValidationException::withMessages(['email' => ['هذا الحساب متوقف حاليًا. تواصل مع الأدمن.']]);
         }
 
@@ -114,6 +185,8 @@ class AuthController extends Controller
             // archived account's password is correct. See DATA_SAFETY_PLAN.md
             // §2.3.3 — archiving freezes the workspace but keeps all data.
             if ($client->isArchived()) {
+                $this->recordFailedLogin($request, LoginAttempt::ENDPOINT_CLIENT, LoginAttempt::REASON_CLIENT_ARCHIVED);
+
                 throw ValidationException::withMessages(['email' => ['هذا الحساب متأرشف حاليًا. تواصل مع مديرك.']]);
             }
 
@@ -146,6 +219,8 @@ class AuthController extends Controller
             // the client must freeze it too — otherwise "client login:
             // blocked" (§2.3.3) has an open side door.
             if ($subUser->client && $subUser->client->isArchived()) {
+                $this->recordFailedLogin($request, LoginAttempt::ENDPOINT_CLIENT, LoginAttempt::REASON_CLIENT_ARCHIVED);
+
                 throw ValidationException::withMessages(['email' => ['هذا الحساب متأرشف حاليًا. تواصل مع مديرك.']]);
             }
 
@@ -174,6 +249,15 @@ class AuthController extends Controller
                 'workspace_id' => $subUser->client->workspace?->id,
             ]);
         }
+
+        // Reached when neither a Client nor a SubUser matched on both email
+        // and password. Both lookups above are already in scope, so the
+        // reason costs nothing extra to determine.
+        $this->recordFailedLogin(
+            $request,
+            LoginAttempt::ENDPOINT_CLIENT,
+            ($client || $subUser) ? LoginAttempt::REASON_WRONG_PASSWORD : LoginAttempt::REASON_UNKNOWN_EMAIL,
+        );
 
         throw ValidationException::withMessages(['email' => ['Invalid credentials.']]);
     }
