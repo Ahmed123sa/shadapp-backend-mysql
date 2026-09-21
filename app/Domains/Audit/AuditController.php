@@ -69,7 +69,27 @@ class AuditController extends Controller
                 ->groupBy('status')
                 ->pluck('count', 'status')
                 ->toArray(),
+            // 21 Sept 2026 — `where('status', 'approved')` was missing, so
+            // this counted pending and rejected payments as revenue. Both
+            // clients already present it as approved-only: the dashboard
+            // labels it "Monthly Revenue" and the mobile AM reports tab
+            // labels it reportsMonthlyRevenue with the subtitle
+            // reportsAcceptedPaymentsTotal ("total accepted payments").
+            // The backend simply never enforced what both of them claim,
+            // so this aligns it with PaymentController's own definition of
+            // revenue in approved_by_currency. Expect reported figures to
+            // drop; the previous ones included money that was never
+            // collected.
+            //
+            // Still open and deliberately not changed here: this SUMs
+            // across currencies, so SAR/USD/EGP land in one number. Fixing
+            // that means grouping by currency too, which changes the shape
+            // of this key — and three consumers read it (the dashboard
+            // reports page, plus mobile's reports_tab and
+            // manager_detail_page). Worth doing, but as its own change
+            // rather than smuggled in behind a status filter.
             'payments_by_month' => (clone $this->paymentQuery($isAm, $user, $filters))
+                ->where('status', 'approved')
                 ->selectRaw(\App\Support\DbExpr::yearMonth('created_at') . ' as month, SUM(amount) as total')
                 ->groupBy('month')
                 ->pluck('total', 'month')
