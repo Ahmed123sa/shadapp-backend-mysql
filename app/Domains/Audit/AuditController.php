@@ -81,18 +81,33 @@ class AuditController extends Controller
             // drop; the previous ones included money that was never
             // collected.
             //
-            // Still open and deliberately not changed here: this SUMs
-            // across currencies, so SAR/USD/EGP land in one number. Fixing
-            // that means grouping by currency too, which changes the shape
-            // of this key — and three consumers read it (the dashboard
-            // reports page, plus mobile's reports_tab and
-            // manager_detail_page). Worth doing, but as its own change
-            // rather than smuggled in behind a status filter.
+            // This still SUMs across currencies, so SAR/USD/EGP land in one
+            // number — kept exactly as-is (shape and all) because mobile's
+            // reports_tab and manager_detail_page still read it, and an old
+            // app build in the field would break if this key changed shape.
+            // payments_by_month_by_currency below is the real fix; this key
+            // stays for backward compatibility until those mobile call
+            // sites are migrated.
             'payments_by_month' => (clone $this->paymentQuery($isAm, $user, $filters))
                 ->where('status', 'approved')
                 ->selectRaw(\App\Support\DbExpr::yearMonth('created_at') . ' as month, SUM(amount) as total')
                 ->groupBy('month')
                 ->pluck('total', 'month')
+                ->toArray(),
+            // 21 Sept 2026 — added so a consumer can show revenue per
+            // currency instead of a meaningless cross-currency sum labelled
+            // with whichever currency happened to be hardcoded (the
+            // dashboard's Reports page said "EGP" on every figure
+            // regardless of what was actually paid). Same approved-only
+            // rule and same query as payments_by_month above, just grouped
+            // by currency too: { "2026-09": { "SAR": 5000, "USD": 3000 } }.
+            'payments_by_month_by_currency' => (clone $this->paymentQuery($isAm, $user, $filters))
+                ->where('status', 'approved')
+                ->selectRaw(\App\Support\DbExpr::yearMonth('created_at') . ' as month, currency, SUM(amount) as total')
+                ->groupBy('month', 'currency')
+                ->get()
+                ->groupBy('month')
+                ->map(fn ($rows) => $rows->pluck('total', 'currency'))
                 ->toArray(),
             'approval_stats' => [
                 'approved' => (clone $this->approvalQuery($isAm, $user, $filters))->where('status', 'approved')->count(),
