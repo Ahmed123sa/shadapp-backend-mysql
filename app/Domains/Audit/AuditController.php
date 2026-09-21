@@ -99,9 +99,69 @@ class AuditController extends Controller
                 'rejected' => (clone $this->approvalQuery($isAm, $user, $filters))->where('status', 'rejected')->count(),
                 'pending' => (clone $this->approvalQuery($isAm, $user, $filters))->where('status', 'pending')->count(),
             ],
+            // 21 Sept 2026 — this key never existed, so both the dashboard's
+            // and mobile's "top managers" leaderboard read `m.revenue ?? ...`
+            // for every row and fell through to the fallback every single
+            // time, live. On web that fallback divided the (currency-summed)
+            // total by a rank-based number; on mobile it did the same thing
+            // with integer division. Same bug in both places: a number that
+            // *looks* like one manager's revenue and is actually a fraction
+            // of everyone's, picked to make rank 1 look biggest by
+            // construction. `clients`/`contracts` in the same row already
+            // showed "—" instead of guessing, this is that fix applied to
+            // `revenue` too — except here the fix is to actually send the
+            // field, not just admit it's missing.
+            'manager_stats' => $this->managerStats($isAm, $user, $filters),
         ];
 
         return response()->json($data);
+    }
+
+    /**
+     * Per-manager rollup for the AM leaderboard. An account manager only
+     * ever sees their own row here — matches how every other query on this
+     * endpoint scopes an AM to themselves. A super admin sees every manager
+     * they created (or just the one named by `manager_id`, same filter the
+     * rest of this report already honours), ranked by revenue descending.
+     *
+     * Same known limitation as `payments_by_month` above: revenue is summed
+     * across currencies with no exchange rate. Not fixed here for the same
+     * reason — it needs a shape change with multiple consumers, so it's its
+     * own piece of work.
+     */
+    private function managerStats(bool $isAm, $user, array $filters = []): array
+    {
+        $managersQuery = \App\Models\User::where('role', \App\Models\User::ROLE_ACCOUNT_MANAGER);
+        if ($isAm) {
+            $managersQuery->where('id', $user->id);
+        } else {
+            $managersQuery->where('super_admin_id', $user->id);
+            if (!empty($filters['manager_id'])) {
+                $managersQuery->where('id', $filters['manager_id']);
+            }
+        }
+
+        return $managersQuery->get()->map(function ($manager) use ($filters) {
+            $clientIds = \App\Models\Client::where('manager_id', $manager->id)->pluck('id');
+            $workspaceIds = \App\Models\Workspace::whereIn('client_id', $clientIds)->pluck('id');
+
+            $paymentQuery = \App\Models\Payment::whereIn('client_id', $clientIds)->where('status', 'approved');
+            $this->applyDateRange($paymentQuery, $filters);
+
+            $contractQuery = \App\Models\Contract::whereIn('workspace_id', $workspaceIds);
+            $this->applyDateRange($contractQuery, $filters);
+
+            return [
+                'id' => $manager->id,
+                'name' => $manager->name,
+                'revenue' => (float) $paymentQuery->sum('amount'),
+                'clients' => $clientIds->count(),
+                'contracts' => $contractQuery->count(),
+            ];
+        })
+            ->sortByDesc('revenue')
+            ->values()
+            ->toArray();
     }
 
     private function applyClientFilters(\Illuminate\Database\Eloquent\Builder $q, array $filters): void
