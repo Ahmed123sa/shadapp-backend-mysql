@@ -2,6 +2,7 @@
 
 namespace App\Domains\Auth;
 
+use App\Models\AuditLog;
 use App\Models\User;
 use App\Models\Client;
 use App\Models\SubUser;
@@ -10,12 +11,58 @@ use App\Support\UploadRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    /**
+     * 20 Sept 2026 — logins were never recorded anywhere. Not in audit_logs
+     * (nothing in the codebase wrote action='login'), and there is no
+     * last_login_at column either, so a successful sign-in left no trace at
+     * all. Meanwhile AuditController::reports() has always counted
+     * `where('action', 'login')` for its recent_logins stat, the dashboard
+     * renders that as a "Login Activity" card, and the mobile audit log
+     * offers a "Logins" filter — all three were reading a row type that was
+     * never written, so they reported 0 / empty forever.
+     *
+     * Deliberately the exact string 'login' (not 'auth.login'): both
+     * frontends already filter on it — the dashboard maps 'login' to a
+     * label and does action.startsWith('login'), the mobile filter chip
+     * sends action=login into AuditController::index()'s LIKE 'login%' —
+     * and reports() matches it exactly. Changing the string would mean
+     * changing all four.
+     *
+     * Failed attempts are deliberately NOT written here. They have no
+     * actor to point at (a wrong email matches no User/Client/SubUser),
+     * and audit_logs.auditable is a non-nullable morph with user_id a real
+     * FK into users — the exact shape that produced the 1452 violations
+     * fixed earlier in this project. They belong in their own table; see
+     * the open item in DATA_SAFETY_PLAN.md.
+     */
+    private function recordLogin($actor, Request $request, string $loginType): void
+    {
+        AuditLog::create([
+            'auditable_type' => $actor::class,
+            'auditable_id' => $actor->id,
+            // Same actor-typing rule as SubUserController/ContractController:
+            // user_id is an FK into `users`, so it only ever holds a staff id.
+            // A client or sub-user is identified by client_id plus the
+            // auditable morph above.
+            'client_id' => match (true) {
+                $actor instanceof Client => $actor->id,
+                $actor instanceof SubUser => $actor->client_id,
+                default => null,
+            },
+            'user_id' => $actor instanceof User ? $actor->id : null,
+            'action' => 'login',
+            'metadata' => ['login_type' => $loginType],
+            'ip_address' => $request->ip(),
+        ]);
+    }
+
     public function login(LoginRequest $request): JsonResponse
     {
 
@@ -33,7 +80,17 @@ class AuthController extends Controller
             throw ValidationException::withMessages(['email' => ['هذا الحساب متوقف حاليًا. تواصل مع الأدمن.']]);
         }
 
-        $token = $user->createToken('auth-token')->plainTextToken;
+        // Token issue + audit row are one unit: a token handed out with no
+        // record of it being handed out is precisely the gap this closes.
+        // Every other write in this codebase already fails closed on an
+        // audit_logs failure (see SubUserController), so this adds no new
+        // availability risk that isn't already there app-wide.
+        $token = DB::transaction(function () use ($user, $request) {
+            $token = $user->createToken('auth-token')->plainTextToken;
+            $this->recordLogin($user, $request, 'staff');
+
+            return $token;
+        });
 
         return response()->json([
             'token' => $token,
@@ -60,7 +117,13 @@ class AuthController extends Controller
                 throw ValidationException::withMessages(['email' => ['هذا الحساب متأرشف حاليًا. تواصل مع مديرك.']]);
             }
 
-            $token = $client->createToken('client-token')->plainTextToken;
+            $token = DB::transaction(function () use ($client, $request) {
+                $token = $client->createToken('client-token')->plainTextToken;
+                $this->recordLogin($client, $request, 'client');
+
+                return $token;
+            });
+
             return response()->json([
                 'token' => $token,
                 'login_type' => 'client',
@@ -86,7 +149,13 @@ class AuthController extends Controller
                 throw ValidationException::withMessages(['email' => ['هذا الحساب متأرشف حاليًا. تواصل مع مديرك.']]);
             }
 
-            $token = $subUser->createToken('sub-user-token')->plainTextToken;
+            $token = DB::transaction(function () use ($subUser, $request) {
+                $token = $subUser->createToken('sub-user-token')->plainTextToken;
+                $this->recordLogin($subUser, $request, 'sub_user');
+
+                return $token;
+            });
+
             return response()->json([
                 'token' => $token,
                 'login_type' => 'sub_user',
