@@ -207,14 +207,24 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     Route::delete('/contract-clause-templates/{template}', [ContractController::class, 'destroyTemplate']);
     Route::post('/contract-clause-templates/reorder', [ContractController::class, 'reorderTemplates']);
 
-    // Users list (for filters)
+    // Users list (for filters). staff.only because this group is NOT
+    // staff-only despite its name — see the middleware's docblock. Without
+    // it this route handed the full staff directory (id, name, email) to
+    // any authenticated client or sub-user token: it never touches
+    // $request->user(), so unlike the two below it didn't even fail loudly,
+    // it just answered.
     Route::get('/users', function () {
         return \App\Models\User::select('id', 'name', 'email')->get();
-    });
+    })->middleware('staff.only');
 
-    // Audit & Reports
-    Route::get('/audit-logs', [AuditController::class, 'index']);
-    Route::get('/reports', [AuditController::class, 'reports']);
+    // Audit & Reports. Both call $user->isAccountManager() to scope their
+    // results, which is a method only App\Models\User has — a client or
+    // sub-user token reaching them was a fatal error (500), and the
+    // "not an account manager" branch treats the caller as a super admin,
+    // i.e. hands over the entire unscoped audit log. staff.only is what
+    // actually keeps non-staff out; the scoping below it is not a gate.
+    Route::get('/audit-logs', [AuditController::class, 'index'])->middleware('staff.only');
+    Route::get('/reports', [AuditController::class, 'reports'])->middleware('staff.only');
 
     // Notifications
     Route::post('/notifications/send-fcm', [NotificationController::class, 'sendFcm']);
