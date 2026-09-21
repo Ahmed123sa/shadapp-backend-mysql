@@ -94,6 +94,25 @@ class AccountManagerController extends Controller
             ->pluck('total', 'month')
             ->toArray();
 
+        // 21 Sept 2026 — total_revenue and payments_by_month above both sum
+        // every currency into one number with no currency attached at all
+        // (manager_detail_page.dart's income card and monthly-income chart
+        // render them as bare numbers — not mislabeled like the dashboard's
+        // old "EGP" bug, but still meaningless once currencies mix with no
+        // exchange rate). This is the same fix as AuditController::reports()'s
+        // payments_by_month_by_currency, just scoped to one manager's
+        // clients: same approved-only rule, grouped by currency too.
+        // payments_by_month itself stays untouched for any app build still
+        // reading it.
+        $paymentsByMonthByCurrency = \App\Models\Payment::whereIn('client_id', $clientIds)
+            ->where('status', 'approved')
+            ->selectRaw("{$monthExpr} as month, currency, SUM(amount) as total")
+            ->groupBy('month', 'currency')
+            ->get()
+            ->groupBy('month')
+            ->map(fn ($rows) => $rows->pluck('total', 'currency'))
+            ->toArray();
+
         return response()->json([
             'clients_count' => $clientsCount,
             'active_workspaces' => $activeWorkspaces,
@@ -101,6 +120,7 @@ class AccountManagerController extends Controller
             'pending_payments' => $pendingPayments,
             'contracts_by_status' => $contractsByStatus,
             'payments_by_month' => $paymentsByMonth,
+            'payments_by_month_by_currency' => $paymentsByMonthByCurrency,
         ]);
     }
 
