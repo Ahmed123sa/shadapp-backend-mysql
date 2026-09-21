@@ -13,6 +13,7 @@ use App\Domains\Meeting\MeetingController;
 use App\Domains\File\FileController;
 use App\Models\FileEntry;
 use App\Domains\Audit\AuditController;
+use App\Domains\Audit\LoginAttemptController;
 use App\Domains\Notification\NotificationController;
 use App\Domains\SubUser\SubUserController;
 use App\Domains\Dashboard\DashboardController;
@@ -225,6 +226,13 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     // actually keeps non-staff out; the scoping below it is not a gate.
     Route::get('/audit-logs', [AuditController::class, 'index'])->middleware('staff.only');
     Route::get('/reports', [AuditController::class, 'reports'])->middleware('staff.only');
+
+    // Failed sign-ins. Separate from /audit-logs because they are a
+    // separate table for a reason — see the create_login_attempts_table
+    // migration. staff.only for the same reason as the two above; the
+    // per-manager scoping inside the controller narrows staff against each
+    // other and is not the gate.
+    Route::get('/login-attempts', [LoginAttemptController::class, 'index'])->middleware('staff.only');
 
     // Notifications
     Route::post('/notifications/send-fcm', [NotificationController::class, 'sendFcm']);
