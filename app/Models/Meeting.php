@@ -28,40 +28,98 @@ class Meeting extends Model
         ];
     }
 
-    // 23 Sept 2026 — CreateMeetingChatMessage writes a snapshot of the
-    // meeting (including its status) into the chat message's metadata when
-    // the meeting is created, and nothing ever updated it afterwards: a
-    // meeting completed or cancelled (by MeetingController::complete()/
-    // cancel()/update(), or auto-completed by the meetings:update-statuses
-    // command) still showed as scheduled in the chat. Hooked here rather
-    // than in each of those four places so any status change, from any
-    // path, keeps the chat card in sync.
-    protected static function booted(): void
+    // 23 Sept 2026 — chat-card helpers used by App\Observers\MeetingObserver,
+    // which keeps a meeting's chat card(s) in sync with the meeting and posts
+    // a fresh card when it's rescheduled. See that class for the why.
+    public const CHAT_SNAPSHOT_FIELDS = ['status', 'title', 'scheduled_at', 'duration_minutes', 'link', 'passcode'];
+
+    /**
+     * Same shape CreateMeetingChatMessage writes (scheduled_at as ISO 8601),
+     * so the mobile MeetingChip parses it identically.
+     */
+    public function chatSnapshot(): array
     {
-        static::updated(function (Meeting $meeting) {
-            if ($meeting->wasChanged('status')) {
-                $meeting->syncChatMessageStatus();
-            }
-        });
+        return [
+            'meeting_id' => $this->id,
+            'title' => $this->title,
+            'scheduled_at' => $this->scheduled_at?->toIso8601String(),
+            'duration_minutes' => $this->duration_minutes,
+            // A cancelled meeting's join details are hidden from the chat
+            // card (MeetingObserver's original behaviour).
+            'link' => $this->status === 'cancelled' ? null : $this->link,
+            'passcode' => $this->status === 'cancelled' ? null : $this->passcode,
+            'status' => $this->status,
+        ];
     }
 
     /**
-     * Copies the current status into the metadata of this meeting's chat
-     * message(s). Filtered in PHP rather than with a JSON-path where clause
-     * so it behaves identically on Postgres and MySQL; a workspace only has a
-     * handful of meeting messages.
+     * Rewrites the snapshot fields (and the title in the message text) on
+     * every chat card for this meeting. Filtered in PHP rather than with a
+     * JSON-path where clause so it behaves identically on Postgres and
+     * MySQL; a workspace only has a handful of meeting messages.
      */
-    public function syncChatMessageStatus(): void
+    public function syncChatMessages(): void
     {
+        $snapshot = $this->chatSnapshot();
+
         ChatMessage::where('workspace_id', $this->workspace_id)
             ->where('type', 'meeting')
             ->get()
             ->filter(fn (ChatMessage $message) => (int) ($message->metadata['meeting_id'] ?? 0) === $this->id)
-            ->each(function (ChatMessage $message) {
-                $metadata = $message->metadata;
-                $metadata['status'] = $this->status;
-                $message->update(['metadata' => $metadata]);
+            ->each(function (ChatMessage $message) use ($snapshot) {
+                $metadata = array_merge($message->metadata ?? [], $snapshot);
+                $message->update([
+                    'metadata' => $metadata,
+                    'message' => $this->chatCardText(!empty($metadata['rescheduled'])),
+                ]);
             });
+    }
+
+    private function chatCardText(bool $rescheduled): string
+    {
+        return $rescheduled
+            ? '📅 تم تغيير ميعاد اجتماع: ' . $this->title
+            : '📹 ' . ($this->title ?? 'اجتماع جديد');
+    }
+
+    public function postRescheduledChatCard(): void
+    {
+        $workspace = $this->workspace;
+        if (!$workspace) {
+            return;
+        }
+
+        // Whoever made the change, if it's staff; otherwise the meeting's
+        // creator, then the workspace's manager. sender is non-nullable.
+        $actor = auth()->user();
+        $sender = $actor instanceof User ? $actor : ($this->creator ?? $workspace->manager);
+        if (!$sender) {
+            \Illuminate\Support\Facades\Log::warning('Meeting #' . $this->id . ' rescheduled but no sender for the chat card');
+            return;
+        }
+
+        $message = $workspace->chatMessages()->create([
+            'sender_type' => get_class($sender),
+            'sender_id' => $sender->id,
+            'message' => $this->chatCardText(true),
+            'type' => 'meeting',
+            'metadata' => $this->chatSnapshot() + ['rescheduled' => true],
+        ]);
+
+        // Same realtime + push delivery ChatController::store() does for a
+        // normal staff message; neither happens automatically on create.
+        try {
+            broadcast(new \App\Domains\Chat\MessageSent($message));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Reschedule card broadcast failed (non-critical): ' . $e->getMessage());
+        }
+        if ($workspace->client) {
+            try {
+                $workspace->client->notify(new \App\Notifications\ChatMessageSentNotification($message));
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Reschedule card notification failed: ' . $e->getMessage());
+            }
+        }
     }
 
     public function workspace(): BelongsTo
