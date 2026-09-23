@@ -4,5 +4,5 @@
 <p>السلام عليكم،</p>
 <p>تم اعتماد العقد "{{ $contract->title }}" بشكل نهائي من الطرفين.</p>
 <p>قيمة العقد: {{ number_format($contract->value, 2) }} ر.س</p>
-<p>تاريخ الاعتماد النهائي: {{ $contract->company_signed_at?->format('Y-m-d H:i') ?? now()->format('Y-m-d H:i') }}</p>
+<p>تاريخ الاعتماد النهائي: {{ \App\Support\DisplayTime::format($contract->company_signed_at ?? now()) }}</p>
 </body></html>

@@ -31,8 +31,8 @@
         @if($approval->description)
         <p><strong>الوصف:</strong> {{ $approval->description }}</p>
         @endif
-        <p><strong>تاريخ الإنشاء:</strong> {{ $approval->created_at->format('Y-m-d H:i') }}</p>
-        <p><strong>تاريخ الاعتماد:</strong> {{ $approval->responded_at ? $approval->responded_at->format('Y-m-d H:i') : '' }}</p>
+        <p><strong>تاريخ الإنشاء:</strong> {{ \App\Support\DisplayTime::format($approval->created_at) }}</p>
+        <p><strong>تاريخ الاعتماد:</strong> {{ \App\Support\DisplayTime::format($approval->responded_at) }}</p>
         <p><strong>الحالة:</strong> <span class="status-badge">تمت الموافقة</span></p>
         <p><strong>مقدم الطلب:</strong> {{ $requester->name ?? '' }}</p>
         <p><strong>العميل:</strong> {{ $client->company_name ?? '' }}</p>

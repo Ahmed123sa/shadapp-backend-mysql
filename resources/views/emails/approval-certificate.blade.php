@@ -6,7 +6,7 @@
 <p>رقم المرجع: {{ $approval->reference_no }}</p>
 <p>القرار: {{ $approval->status === 'approved' ? 'تمت الموافقة' : ($approval->status === 'rejected' ? 'مرفوض' : $approval->status) }}</p>
 @if($approval->responded_at)
-<p>تاريخ الاعتماد: {{ $approval->responded_at->format('Y-m-d H:i') }}</p>
+<p>تاريخ الاعتماد: {{ \App\Support\DisplayTime::format($approval->responded_at) }}</p>
 @endif
 @if($approval->certificate && $approval->certificate->certificate_url)
 <p><a href="{{ $approval->certificate->certificate_url }}">تحميل الشهادة</a></p>

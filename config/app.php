@@ -80,6 +80,12 @@ return [
 
     'timezone' => 'UTC',
 
+    // Timezone for times the server renders as text itself (emails, push
+    // notification bodies, PDFs) — see App\Support\DisplayTime. Stored
+    // timestamps and the application timezone above stay UTC; the apps
+    // convert to each viewer's own timezone.
+    'display_timezone' => env('APP_DISPLAY_TIMEZONE', 'Africa/Cairo'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration

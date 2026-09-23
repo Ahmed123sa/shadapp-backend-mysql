@@ -28,7 +28,9 @@ class MeetingReminderNotification extends BaseNotification
     {
         return [
             'title' => 'تذكير باجتماع',
-            'body' => "اجتماع {$this->meeting->title} في {$this->meeting->scheduled_at}",
+            // Plain text can't be converted per reader like the apps do, so
+            // it uses the business timezone (App\Support\DisplayTime).
+            'body' => "اجتماع {$this->meeting->title} في " . \App\Support\DisplayTime::format($this->meeting->scheduled_at),
             'data' => [
                 'type' => 'meeting',
                 'id' => (string) $this->meeting->id,

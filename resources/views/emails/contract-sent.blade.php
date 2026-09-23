@@ -12,5 +12,5 @@
 @endforeach
 </ul>
 @endif
-<p>تاريخ الإرسال: {{ now()->format('Y-m-d H:i') }}</p>
+<p>تاريخ الإرسال: {{ \App\Support\DisplayTime::format(now()) }}</p>
 </body></html>
