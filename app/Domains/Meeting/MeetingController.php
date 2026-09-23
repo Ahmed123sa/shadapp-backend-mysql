@@ -91,7 +91,15 @@ class MeetingController extends Controller
         return response()->json(['meeting' => $meeting], 201);
     }
 
-    public function update(Request $request, Meeting $meeting): JsonResponse
+    // 23 Sept 2026 — both routes are /workspaces/{workspace}/meetings/{meeting},
+    // but these two methods only declared $meeting. Laravel passes route
+    // parameters positionally once one of them is already resolved, so
+    // $meeting received the raw workspace id string and every call 500'd
+    // with a TypeError (mobile's edit-meeting sheet uses PUT). Declaring
+    // $workspace also lets ScopeWorkspace run its tenant/child-resource
+    // check, which it silently skipped while {workspace} was an unbound
+    // string.
+    public function update(Request $request, Workspace $workspace, Meeting $meeting): JsonResponse
     {
         $this->authorize('update', $meeting);
 
@@ -123,7 +131,7 @@ class MeetingController extends Controller
         return response()->json(['meeting' => $meeting->fresh()]);
     }
 
-    public function destroy(Meeting $meeting): JsonResponse
+    public function destroy(Workspace $workspace, Meeting $meeting): JsonResponse
     {
         $this->authorize('delete', $meeting);
 
