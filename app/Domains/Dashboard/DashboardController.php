@@ -127,6 +127,10 @@ class DashboardController extends Controller
         $payments = Payment::whereIn('status', ['scheduled', 'pending', 'overdue'])
             ->count();
 
+        // See the comment in amCounts() — same reasoning, company-wide.
+        $pendingPaymentApprovals = Payment::where('status', 'pending')
+            ->count();
+
         $files = FileEntry::where('status', 'pending')
             ->count();
 
@@ -135,7 +139,7 @@ class DashboardController extends Controller
         return response()->json([
             'chat' => $chat,
             'contracts' => 0,
-            'approvals' => $pendingApprovals + $pendingContracts,
+            'approvals' => $pendingApprovals + $pendingContracts + $pendingPaymentApprovals,
             'payments' => $payments,
             'files' => $files,
             'notifications' => $notifications,
@@ -163,6 +167,18 @@ class DashboardController extends Controller
             ->whereIn('status', ['scheduled', 'pending', 'overdue'])
             ->count();
 
+        // 23 Sept 2026 — the mobile Approvals screen (sa_approvals_page.dart,
+        // the one this badge opens) lists pending contracts, pending
+        // approval requests AND payments awaiting the manager's approval
+        // (status 'pending', same filter as GET /payments/pending), but this
+        // badge only counted the first two — so with a payment waiting, the
+        // list showed more than the badge. The 'payments' key below is a
+        // different, broader count (scheduled/overdue too) that no AM screen
+        // displays; it's left as-is.
+        $pendingPaymentApprovals = Payment::whereIn('workspace_id', $workspaceIds)
+            ->where('status', 'pending')
+            ->count();
+
         $files = FileEntry::whereIn('workspace_id', $workspaceIds)
             ->where('status', 'pending')
             ->count();
@@ -172,7 +188,7 @@ class DashboardController extends Controller
         return response()->json([
             'chat' => $chat,
             'contracts' => 0,
-            'approvals' => $pendingApprovals + $pendingContracts,
+            'approvals' => $pendingApprovals + $pendingContracts + $pendingPaymentApprovals,
             'payments' => $payments,
             'files' => $files,
             'notifications' => $notifications,
