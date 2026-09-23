@@ -24,9 +24,16 @@ class ApprovalController extends Controller
     public function pending(Request $request): JsonResponse
     {
         $user = $request->user();
+        // 23 Sept 2026 — this used to call $user->workspaces(), but User has
+        // no workspaces() relation at all, so every non-super-admin request
+        // threw a BadMethodCallException (500). The web dashboard's call to
+        // this endpoint swallows errors with a .catch() fallback, so it went
+        // unnoticed. Scoped by manager_id instead — the same scope
+        // DashboardController::amCounts() uses for the Approvals badge, so
+        // this list and that count always agree.
         $workspaceIds = $user->role === 'super_admin'
             ? Workspace::pluck('id')
-            : $user->workspaces()->pluck('id');
+            : Workspace::where('manager_id', $user->id)->pluck('id');
 
         $approvals = Approval::whereIn('workspace_id', $workspaceIds)
             ->where('status', 'pending')
