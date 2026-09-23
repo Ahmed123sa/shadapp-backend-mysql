@@ -28,6 +28,42 @@ class Meeting extends Model
         ];
     }
 
+    // 23 Sept 2026 — CreateMeetingChatMessage writes a snapshot of the
+    // meeting (including its status) into the chat message's metadata when
+    // the meeting is created, and nothing ever updated it afterwards: a
+    // meeting completed or cancelled (by MeetingController::complete()/
+    // cancel()/update(), or auto-completed by the meetings:update-statuses
+    // command) still showed as scheduled in the chat. Hooked here rather
+    // than in each of those four places so any status change, from any
+    // path, keeps the chat card in sync.
+    protected static function booted(): void
+    {
+        static::updated(function (Meeting $meeting) {
+            if ($meeting->wasChanged('status')) {
+                $meeting->syncChatMessageStatus();
+            }
+        });
+    }
+
+    /**
+     * Copies the current status into the metadata of this meeting's chat
+     * message(s). Filtered in PHP rather than with a JSON-path where clause
+     * so it behaves identically on Postgres and MySQL; a workspace only has a
+     * handful of meeting messages.
+     */
+    public function syncChatMessageStatus(): void
+    {
+        ChatMessage::where('workspace_id', $this->workspace_id)
+            ->where('type', 'meeting')
+            ->get()
+            ->filter(fn (ChatMessage $message) => (int) ($message->metadata['meeting_id'] ?? 0) === $this->id)
+            ->each(function (ChatMessage $message) {
+                $metadata = $message->metadata;
+                $metadata['status'] = $this->status;
+                $message->update(['metadata' => $metadata]);
+            });
+    }
+
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class);
