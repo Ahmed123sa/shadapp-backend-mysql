@@ -67,7 +67,9 @@ class MeetingController extends Controller
         if (ZoomService::isConfigured()) {
             try {
                 $zoom = app(ZoomService::class);
-                $zoomMeeting = $zoom->createMeeting($request->title, $request->scheduled_at, $request->duration_minutes ?? 30);
+                // Zoom's documented GMT format, rather than whatever offset
+                // format the app sent (see Meeting::setScheduledAtAttribute).
+                $zoomMeeting = $zoom->createMeeting($request->title, self::zoomTime($request->scheduled_at), $request->duration_minutes ?? 30);
                 $meetingData['zoom_meeting_id'] = $zoomMeeting['id'] ?? null;
                 $meetingData['link'] = $zoomMeeting['join_url'] ?? null;
                 $meetingData['passcode'] = $zoomMeeting['password'] ?? null;
@@ -109,7 +111,7 @@ class MeetingController extends Controller
             try {
                 $zoomData = [];
                 if ($request->has('title')) $zoomData['topic'] = $request->title;
-                if ($request->has('scheduled_at')) $zoomData['start_time'] = $request->scheduled_at;
+                if ($request->has('scheduled_at')) $zoomData['start_time'] = self::zoomTime($request->scheduled_at);
                 if ($request->has('duration_minutes')) $zoomData['duration'] = $request->duration_minutes;
 
                 if (!empty($zoomData)) {
@@ -129,6 +131,12 @@ class MeetingController extends Controller
         ]);
 
         return response()->json(['meeting' => $meeting->fresh()]);
+    }
+
+    /** "2026-10-01T15:00:00Z" — UTC, whatever offset the client sent. */
+    private static function zoomTime(string $scheduledAt): string
+    {
+        return \Carbon\Carbon::parse($scheduledAt)->utc()->format('Y-m-d\\TH:i:s\\Z');
     }
 
     public function destroy(Workspace $workspace, Meeting $meeting): JsonResponse

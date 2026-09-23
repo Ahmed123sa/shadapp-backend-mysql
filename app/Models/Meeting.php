@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -26,6 +27,25 @@ class Meeting extends Model
             'zoom_attendees' => 'array',
             'duration_minutes' => 'integer',
         ];
+    }
+
+    /**
+     * 23 Sept 2026 — mobile sends scheduled_at with the phone's offset
+     * ("2026-10-01T18:00:00+03:00"). Laravel's datetime cast parses that
+     * offset but then formats the value for the database without converting
+     * it, so the offset was silently dropped: 18:00+03:00 was stored as
+     * 18:00 UTC (three hours late), while the web dashboard's UTC strings
+     * were stored correctly. Always convert to UTC before storing.
+     */
+    public function setScheduledAtAttribute($value): void
+    {
+        if ($value === null || $value === '') {
+            $this->attributes['scheduled_at'] = null;
+            return;
+        }
+
+        $date = $value instanceof \DateTimeInterface ? Carbon::instance($value) : Carbon::parse($value);
+        $this->attributes['scheduled_at'] = $this->fromDateTime($date->copy()->utc());
     }
 
     // 23 Sept 2026 — chat-card helpers used by App\Observers\MeetingObserver,
