@@ -183,18 +183,16 @@ class DashboardController extends Controller
             ->whereNull('read_at')
             ->count();
 
-        $pendingContracts = Contract::whereIn('status', ['sent', 'client_approved'])
-            ->count();
-
-        $pendingApprovals = Approval::where('status', 'pending')
-            ->count();
-
         $payments = Payment::whereIn('status', ['scheduled', 'pending', 'overdue'])
             ->count();
 
-        // See the comment in amCounts() — same reasoning, company-wide.
-        $pendingPaymentApprovals = Payment::where('status', 'pending')
-            ->count();
+        // 24 Sept 2026 — was three separate counts added up by hand here
+        // (pending approval requests + pending contracts + pending
+        // payments); now the same DashboardScope::pendingApprovalsTotal()
+        // that powers GET /dashboard/stats' approvals card, so the two can
+        // never drift apart again the way they already had once (23 Sept
+        // 2026 — this badge used to omit pending payments entirely).
+        $approvals = DashboardScope::pendingApprovalsTotal(false, $user)['total'];
 
         $files = FileEntry::where('status', 'pending')
             ->count();
@@ -204,7 +202,7 @@ class DashboardController extends Controller
         return response()->json([
             'chat' => $chat,
             'contracts' => 0,
-            'approvals' => $pendingApprovals + $pendingContracts + $pendingPaymentApprovals,
+            'approvals' => $approvals,
             'payments' => $payments,
             'files' => $files,
             'notifications' => $notifications,
@@ -220,29 +218,19 @@ class DashboardController extends Controller
             ->whereNull('read_at')
             ->count();
 
-        $pendingContracts = Contract::whereIn('workspace_id', $workspaceIds)
-            ->whereIn('status', ['sent', 'client_approved'])
-            ->count();
-
-        $pendingApprovals = Approval::whereIn('workspace_id', $workspaceIds)
-            ->where('status', 'pending')
-            ->count();
-
         $payments = Payment::whereIn('workspace_id', $workspaceIds)
             ->whereIn('status', ['scheduled', 'pending', 'overdue'])
             ->count();
 
-        // 23 Sept 2026 — the mobile Approvals screen (sa_approvals_page.dart,
-        // the one this badge opens) lists pending contracts, pending
-        // approval requests AND payments awaiting the manager's approval
-        // (status 'pending', same filter as GET /payments/pending), but this
-        // badge only counted the first two — so with a payment waiting, the
-        // list showed more than the badge. The 'payments' key below is a
-        // different, broader count (scheduled/overdue too) that no AM screen
-        // displays; it's left as-is.
-        $pendingPaymentApprovals = Payment::whereIn('workspace_id', $workspaceIds)
-            ->where('status', 'pending')
-            ->count();
+        // 24 Sept 2026 — was three separate counts added up by hand here
+        // (pending approval requests + pending contracts + pending
+        // payments); now the same DashboardScope::pendingApprovalsTotal()
+        // that powers GET /dashboard/stats' approvals card, so the two can
+        // never drift apart again the way they already had once (23 Sept
+        // 2026 — this badge used to omit pending payments entirely). The
+        // 'payments' key above is a different, broader count
+        // (scheduled/overdue too) that no AM screen displays; left as-is.
+        $approvals = DashboardScope::pendingApprovalsTotal(true, $user)['total'];
 
         $files = FileEntry::whereIn('workspace_id', $workspaceIds)
             ->where('status', 'pending')
@@ -253,7 +241,7 @@ class DashboardController extends Controller
         return response()->json([
             'chat' => $chat,
             'contracts' => 0,
-            'approvals' => $pendingApprovals + $pendingContracts + $pendingPaymentApprovals,
+            'approvals' => $approvals,
             'payments' => $payments,
             'files' => $files,
             'notifications' => $notifications,
