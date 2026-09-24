@@ -205,9 +205,14 @@ class ChatController extends Controller
                 ]);
             }
 
-            if ($approval->requester) {
-                $approval->requester->notify(new \App\Notifications\ApprovalRespondedNotification($approval));
-            }
+            // 23 Sept 2026 — this used to notify the requester directly and
+            // nothing else, so the approval certificate email never went out
+            // for a client's answer (this is the route clients actually use;
+            // ApprovalController::respond() is staff-only). The shared event
+            // sends the email to the requester and the client, skips a
+            // deactivated requester, and never lets a failed send break the
+            // client's response.
+            \App\Events\ApprovalResponded::dispatch($approval);
         }
 
         AuditLog::create(array_filter([
