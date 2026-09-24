@@ -20,10 +20,13 @@ class MeetingController extends Controller
         $this->authorize('viewAny', Meeting::class);
 
         $user = $request->user();
+        // 24 Sept 2026 (server-side-stats-plan.md, Stage 4, W10) — see the
+        // matching comment on ContractController::allContracts.
+        $perPage = max(1, min((int) $request->input('per_page', 30), 100));
         $meetings = Meeting::with('workspace.client', 'contract', 'approval')
             ->when($user->isAccountManager(), fn($q) => $q->whereHas('workspace', fn($q) => $q->where('manager_id', $user->id)))
             ->latest()
-            ->paginate(30);
+            ->paginate($perPage);
 
         return response()->json(['meetings' => $meetings]);
     }

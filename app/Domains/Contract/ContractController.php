@@ -27,10 +27,16 @@ class ContractController extends Controller
         $this->authorize('viewAny', Contract::class);
 
         $user = $request->user();
+        // 24 Sept 2026 (server-side-stats-plan.md, Stage 4, W10) — was a
+        // hardcoded paginate(30) that silently ignored any per_page the
+        // caller sent. Clamped to 100 (unlike /all-payments' uncapped
+        // per_page) since this eager-loads workspace.client per row; default
+        // stays 30 so a caller that never sends per_page sees no change.
+        $perPage = max(1, min((int) $request->input('per_page', 30), 100));
         $contracts = Contract::with('workspace.client')
             ->when($user->isAccountManager(), fn($q) => $q->whereHas('workspace', fn($q) => $q->where('manager_id', $user->id)))
             ->latest()
-            ->paginate(30);
+            ->paginate($perPage);
 
         $this->ensureFreshPdfs($contracts->getCollection());
 
