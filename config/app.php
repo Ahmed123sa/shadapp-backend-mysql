@@ -86,6 +86,12 @@ return [
     // convert to each viewer's own timezone.
     'display_timezone' => env('APP_DISPLAY_TIMEZONE', 'Africa/Cairo'),
 
+    // 23 Sept 2026 — timezone for the times in routes/console.php
+    // (dailyAt('09:00') etc.). Read by the framework's console kernel; without
+    // it the schedule followed 'timezone' above (UTC), so the 09:00 reminders
+    // went out at 11:00/12:00 Egypt time and the 03:00 backup at 05:00/06:00.
+    'schedule_timezone' => env('APP_SCHEDULE_TIMEZONE', 'Africa/Cairo'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
