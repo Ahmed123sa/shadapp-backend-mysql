@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\Access\Authorizable;
 use Illuminate\Notifications\Notifiable;
@@ -26,6 +27,9 @@ class Client extends Authenticatable
     ];
 
     protected $hidden = ['password'];
+
+    /** A contract in one of these statuses has been approved by the client. */
+    public const SIGNED_CONTRACT_STATUSES = ['client_approved', 'company_approved', 'completed'];
 
     protected $appends = ['name', 'signature_url'];
 
@@ -104,6 +108,12 @@ class Client extends Authenticatable
     public function workspace(): HasOne
     {
         return $this->hasOne(Workspace::class);
+    }
+
+    /** Contracts in this client's workspace. */
+    public function contracts(): HasManyThrough
+    {
+        return $this->hasManyThrough(Contract::class, Workspace::class);
     }
 
     public function subUsers(): HasMany

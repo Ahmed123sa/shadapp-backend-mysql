@@ -25,6 +25,11 @@ class ClientController extends Controller
 
         $user = $request->user();
         $clients = Client::with('workspace', 'subUsers', 'payments')
+            // 23 Sept 2026 — whether the client has approved a contract.
+            // Mobile's client cards showed "Not contracted" from signed_at,
+            // which only records the client saving a profile signature, so
+            // a paid, active client could show as not contracted.
+            ->withExists(['contracts as has_signed_contract' => fn ($q) => $q->whereIn('contracts.status', Client::SIGNED_CONTRACT_STATUSES)])
             ->when($user->isAccountManager(), fn($q) => $q->where('manager_id', $user->id))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $search = $request->q;
