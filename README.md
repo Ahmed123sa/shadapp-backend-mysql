@@ -257,7 +257,7 @@ against a real MySQL database for that.
 - [ ] Real SMTP credentials configured
 - [ ] `./supervisor/setup.sh` has been run — installs the queue worker and Reverb under Supervisor and adds the scheduler cron entry
 - [ ] Reverse proxy forwards the Reverb route with WebSocket upgrade headers (see below)
-- [ ] `php artisan storage:link` has been run
+- [ ] `php artisan storage:link` has **not** been run (remove `public/storage` if it exists) — uploaded files (contracts, payment proofs, client documents) are served through the signed `/files/...` route (`routes/web.php`, `App\Support\FileUrl`); the symlink bypasses that check and makes every file publicly reachable by path. Known gap: uploaded signature *images* (`signature_data`) are stored unsigned, so their in-app preview won't load without the symlink — contract/approval PDFs still embed them, since they read from disk (`App\Support\SignatureValue::diskPath`).
 - [ ] `php artisan config:cache && php artisan route:cache`
 - [ ] Database backups scheduled
 - [ ] `FCM_SERVER_KEY` set if push notifications are wanted
