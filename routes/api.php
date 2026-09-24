@@ -227,6 +227,11 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     Route::get('/audit-logs', [AuditController::class, 'index'])->middleware('staff.only');
     Route::get('/reports', [AuditController::class, 'reports'])->middleware('staff.only');
 
+    // Server-computed dashboard cards (server-side-stats-plan.md). Same
+    // gate as /reports, for the same reason: it calls isAccountManager()
+    // directly, which a client/sub-user token doesn't have.
+    Route::get('/dashboard/stats', [DashboardController::class, 'stats'])->middleware('staff.only');
+
     // Failed sign-ins. Separate from /audit-logs because they are a
     // separate table for a reason — see the create_login_attempts_table
     // migration. staff.only for the same reason as the two above; the

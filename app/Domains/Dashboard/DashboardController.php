@@ -10,12 +10,77 @@ use App\Models\FileEntry;
 use App\Models\Payment;
 use App\Models\SubUser;
 use App\Models\Workspace;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 
 class DashboardController extends Controller
 {
+    /**
+     * The server-computed replacement for the dashboard cards that used to
+     * be computed client-side from a paginated list (see
+     * server-side-stats-plan.md). An account manager only ever gets their
+     * own numbers; a super admin gets everyone's, optionally narrowed to one
+     * manager the same way /reports already supports.
+     *
+     * Every number here is a full COUNT/SUM over the whole table, not a
+     * count of whatever page happened to load — that was the actual bug
+     * this endpoint exists to fix (web and mobile each capped at ~30-100
+     * rows and treated that as the total).
+     */
+    public function stats(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $isAm = $user->isAccountManager();
+        $filters = $request->only(['manager_id']);
+
+        $totalClients = (clone DashboardScope::clients($isAm, $user, $filters))
+            ->where('status', '!=', 'archived')
+            ->count();
+
+        $activeContracts = (clone DashboardScope::contracts($isAm, $user, $filters))
+            ->whereIn('status', ['company_approved', 'completed'])
+            ->count();
+
+        $awaitingClientContracts = (clone DashboardScope::contracts($isAm, $user, $filters))
+            ->whereIn('status', ['sent', 'client_approved'])
+            ->count();
+
+        $pendingPayments = (clone DashboardScope::payments($isAm, $user, $filters))
+            ->where('status', 'pending')
+            ->count();
+
+        $approvals = DashboardScope::pendingApprovalsTotal($isAm, $user, $filters);
+
+        // "This month" is Egypt wall-clock time, not the app's UTC storage
+        // timezone or the browser's local time — the bug this replaces
+        // (SAManagersView.tsx summing payments client-side) got the month
+        // boundary wrong for exactly this reason.
+        $displayTz = config('app.display_timezone', 'Africa/Cairo');
+        $nowInTz = Carbon::now($displayTz);
+        $monthStartUtc = $nowInTz->copy()->startOfMonth()->setTimezone('UTC');
+        $monthEndUtc = $nowInTz->copy()->endOfMonth()->setTimezone('UTC');
+
+        $revenueThisMonth = (clone DashboardScope::payments($isAm, $user, $filters))
+            ->where('status', 'approved')
+            ->whereBetween('created_at', [$monthStartUtc, $monthEndUtc])
+            ->selectRaw('currency, SUM(amount) as total')
+            ->groupBy('currency')
+            ->pluck('total', 'currency')
+            ->map(fn ($v) => (float) $v)
+            ->toArray();
+
+        return response()->json([
+            'clients' => ['total' => $totalClients],
+            'contracts' => ['active' => $activeContracts, 'awaiting_client' => $awaitingClientContracts],
+            'payments' => ['pending' => $pendingPayments],
+            'approvals' => $approvals,
+            'revenue_this_month' => $revenueThisMonth,
+            'period' => ['month' => $nowInTz->format('Y-m'), 'timezone' => $displayTz],
+        ]);
+    }
+
     public function badgeCounts(Request $request): JsonResponse
     {
         $user = $request->user();

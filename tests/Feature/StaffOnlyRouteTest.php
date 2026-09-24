@@ -43,6 +43,9 @@ class StaffOnlyRouteTest extends TestCase
             'users list' => ['/api/users'],
             'audit log' => ['/api/audit-logs'],
             'reports' => ['/api/reports'],
+            // 24 Sept 2026 — same isAccountManager()-based scoping as
+            // /reports (DashboardController::stats(), server-side-stats-plan.md).
+            'dashboard stats' => ['/api/dashboard/stats'],
         ];
     }
 
