@@ -108,16 +108,18 @@ class ApprovalController extends Controller
             'ip_address' => $request->ip(),
         ]);
 
-        $manager = $workspace->manager;
-        $admins = User::where('role', User::ROLE_SUPER_ADMIN)->get();
+        // 23 Sept 2026 — this used to notify the workspace manager plus every
+        // super admin, and never the client — the one person who actually has
+        // to respond to the request. Now: the client, plus the workspace
+        // manager only when someone else (a super admin) raised the request
+        // in their workspace. Super admins no longer get this notification.
         $notifyUsers = collect();
-        if ($manager) {
-            $notifyUsers->push($manager);
+        if ($workspace->client) {
+            $notifyUsers->push($workspace->client);
         }
-        foreach ($admins as $admin) {
-            if ($admin->id !== $request->user()->id) {
-                $notifyUsers->push($admin);
-            }
+        $manager = $workspace->manager;
+        if ($manager && $manager->id !== $request->user()->id && $manager->isActive()) {
+            $notifyUsers->push($manager);
         }
         foreach ($notifyUsers as $user) {
             try {

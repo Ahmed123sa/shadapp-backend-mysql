@@ -49,6 +49,24 @@ class ApprovalRequestNotificationTest extends TestCase
             ->assertStatus(201);
     }
 
+    public function test_a_managers_request_notifies_the_client_only(): void
+    {
+        $this->requestApprovalAs($this->manager);
+
+        Notification::assertSentTo($this->client, ApprovalRequestedNotification::class);
+        Notification::assertNotSentTo($this->admin, ApprovalRequestedNotification::class);
+        Notification::assertNotSentTo($this->manager, ApprovalRequestedNotification::class);
+    }
+
+    public function test_a_super_admins_request_notifies_the_client_and_the_manager(): void
+    {
+        $this->requestApprovalAs($this->admin);
+
+        Notification::assertSentTo($this->client, ApprovalRequestedNotification::class);
+        Notification::assertSentTo($this->manager, ApprovalRequestedNotification::class);
+        Notification::assertNotSentTo($this->admin, ApprovalRequestedNotification::class);
+    }
+
     public function test_the_requested_notification_carries_the_workspace_and_client(): void
     {
         $approval = Approval::factory()->create(['workspace_id' => $this->workspace->id, 'requested_by' => $this->manager->id]);
