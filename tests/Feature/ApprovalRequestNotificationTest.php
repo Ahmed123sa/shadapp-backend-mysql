@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Domains\Chat\MessageSent;
 use App\Models\Approval;
 use App\Models\Client;
 use App\Models\User;
@@ -9,6 +10,7 @@ use App\Models\Workspace;
 use App\Notifications\ApprovalRequestedNotification;
 use App\Notifications\ApprovalRespondedNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
@@ -93,5 +95,15 @@ class ApprovalRequestNotificationTest extends TestCase
         $push = $notification->toFcm($this->manager)['data'];
         $this->assertSame((string) $this->workspace->id, $push['workspace_id']);
         $this->assertSame((string) $this->client->id, $push['client_id']);
+    }
+
+    public function test_the_request_chat_message_is_broadcast_live(): void
+    {
+        Event::fake([MessageSent::class]);
+
+        $this->requestApprovalAs($this->manager);
+
+        $approval = Approval::where('workspace_id', $this->workspace->id)->firstOrFail();
+        Event::assertDispatched(MessageSent::class, fn (MessageSent $e) => $e->message->approval_id === $approval->id);
     }
 }

@@ -99,6 +99,15 @@ class ApprovalController extends Controller
             'action_taken' => false,
         ]);
 
+        // 23 Sept 2026 — push the new chat message to anyone with this chat
+        // open, the same way ChatController::store() does for a normal
+        // message. Without it the request only appeared after a refresh.
+        try {
+            broadcast(new \App\Domains\Chat\MessageSent($msg))->toOthers();
+        } catch (\Throwable $e) {
+            Log::warning('Approval chat broadcast failed (non-critical): ' . $e->getMessage());
+        }
+
         AuditLog::create([
             'auditable_type' => Approval::class,
             'auditable_id' => $approval->id,
