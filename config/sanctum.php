@@ -50,7 +50,11 @@ return [
     |
     */
 
-    'expiration' => 1440,
+    // 23 Sept 2026 — was a hardcoded 1440 (24 hours), counted from login
+    // with no refresh, so the mobile app logged everyone out once a day.
+    // Now 60 days by default, overridable per environment. Tokens are still
+    // revoked on logout, password change/reset and manager deactivation.
+    'expiration' => (int) env('SANCTUM_EXPIRATION', 60 * 24 * 60),
 
     /*
     |--------------------------------------------------------------------------
