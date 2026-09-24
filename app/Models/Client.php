@@ -27,7 +27,7 @@ class Client extends Authenticatable
 
     protected $hidden = ['password'];
 
-    protected $appends = ['name'];
+    protected $appends = ['name', 'signature_url'];
 
     protected static function booted(): void
     {
@@ -135,5 +135,20 @@ class Client extends Authenticatable
     public function getAvatarUrlAttribute($value): ?string
     {
         return \App\Support\FileUrl::sign($value);
+    }
+
+    /**
+     * 23 Sept 2026 — a signed, displayable URL for an uploaded signature
+     * image (null for a typed signature). signature_data itself stays the
+     * raw stored value, because it's copied verbatim into permanent snapshot
+     * columns (see getAvatarUrlAttribute above); the apps use this field only
+     * to *show* the image. Without it, the preview pointed at /storage/...,
+     * which doesn't exist in production (no storage:link — see README).
+     */
+    public function getSignatureUrlAttribute(): ?string
+    {
+        $value = $this->attributes['signature_data'] ?? null;
+
+        return \App\Support\SignatureValue::isImage($value) ? \App\Support\FileUrl::sign($value) : null;
     }
 }
