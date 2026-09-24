@@ -2,6 +2,7 @@
 
 namespace App\Domains\Audit;
 
+use App\Domains\Dashboard\DashboardScope;
 use App\Models\AuditLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -59,12 +60,12 @@ class AuditController extends Controller
         ]);
 
         $data = [
-            'total_clients' => (clone $this->clientQuery($isAm, $user, $filters))->count(),
-            'active_workspaces' => (clone $this->workspaceQuery($isAm, $user, $filters))->where('status', 'active')->count(),
-            'pending_payments' => (clone $this->paymentQuery($isAm, $user, $filters))->where('status', 'pending')->count(),
-            'pending_approvals' => (clone $this->approvalQuery($isAm, $user, $filters))->where('status', 'pending')->count(),
-            'recent_logins' => (clone $this->auditLogQuery($isAm, $user, $filters))->where('action', 'login')->whereDate('created_at', today())->count(),
-            'contracts_by_status' => (clone $this->contractQuery($isAm, $user, $filters))
+            'total_clients' => (clone DashboardScope::clients($isAm, $user, $filters))->count(),
+            'active_workspaces' => (clone DashboardScope::workspaces($isAm, $user, $filters))->where('status', 'active')->count(),
+            'pending_payments' => (clone DashboardScope::payments($isAm, $user, $filters))->where('status', 'pending')->count(),
+            'pending_approvals' => (clone DashboardScope::approvals($isAm, $user, $filters))->where('status', 'pending')->count(),
+            'recent_logins' => (clone DashboardScope::auditLogs($isAm, $user, $filters))->where('action', 'login')->whereDate('created_at', today())->count(),
+            'contracts_by_status' => (clone DashboardScope::contracts($isAm, $user, $filters))
                 ->selectRaw('status, count(*) as count')
                 ->groupBy('status')
                 ->pluck('count', 'status')
@@ -88,7 +89,7 @@ class AuditController extends Controller
             // payments_by_month_by_currency below is the real fix; this key
             // stays for backward compatibility until those mobile call
             // sites are migrated.
-            'payments_by_month' => (clone $this->paymentQuery($isAm, $user, $filters))
+            'payments_by_month' => (clone DashboardScope::payments($isAm, $user, $filters))
                 ->where('status', 'approved')
                 ->selectRaw(\App\Support\DbExpr::yearMonth('created_at') . ' as month, SUM(amount) as total')
                 ->groupBy('month')
@@ -101,7 +102,7 @@ class AuditController extends Controller
             // regardless of what was actually paid). Same approved-only
             // rule and same query as payments_by_month above, just grouped
             // by currency too: { "2026-09": { "SAR": 5000, "USD": 3000 } }.
-            'payments_by_month_by_currency' => (clone $this->paymentQuery($isAm, $user, $filters))
+            'payments_by_month_by_currency' => (clone DashboardScope::payments($isAm, $user, $filters))
                 ->where('status', 'approved')
                 ->selectRaw(\App\Support\DbExpr::yearMonth('created_at') . ' as month, currency, SUM(amount) as total')
                 ->groupBy('month', 'currency')
@@ -110,9 +111,9 @@ class AuditController extends Controller
                 ->map(fn ($rows) => $rows->pluck('total', 'currency'))
                 ->toArray(),
             'approval_stats' => [
-                'approved' => (clone $this->approvalQuery($isAm, $user, $filters))->where('status', 'approved')->count(),
-                'rejected' => (clone $this->approvalQuery($isAm, $user, $filters))->where('status', 'rejected')->count(),
-                'pending' => (clone $this->approvalQuery($isAm, $user, $filters))->where('status', 'pending')->count(),
+                'approved' => (clone DashboardScope::approvals($isAm, $user, $filters))->where('status', 'approved')->count(),
+                'rejected' => (clone DashboardScope::approvals($isAm, $user, $filters))->where('status', 'rejected')->count(),
+                'pending' => (clone DashboardScope::approvals($isAm, $user, $filters))->where('status', 'pending')->count(),
             ],
             // 21 Sept 2026 — this key never existed, so both the dashboard's
             // and mobile's "top managers" leaderboard read `m.revenue ?? ...`
@@ -161,10 +162,10 @@ class AuditController extends Controller
             $workspaceIds = \App\Models\Workspace::whereIn('client_id', $clientIds)->pluck('id');
 
             $paymentQuery = \App\Models\Payment::whereIn('client_id', $clientIds)->where('status', 'approved');
-            $this->applyDateRange($paymentQuery, $filters);
+            DashboardScope::applyDateRange($paymentQuery, $filters);
 
             $contractQuery = \App\Models\Contract::whereIn('workspace_id', $workspaceIds);
-            $this->applyDateRange($contractQuery, $filters);
+            DashboardScope::applyDateRange($contractQuery, $filters);
 
             return [
                 'id' => $manager->id,
@@ -177,102 +178,5 @@ class AuditController extends Controller
             ->sortByDesc('revenue')
             ->values()
             ->toArray();
-    }
-
-    private function applyClientFilters(\Illuminate\Database\Eloquent\Builder $q, array $filters): void
-    {
-        if (!empty($filters['client_id'])) {
-            $q->where('client_id', $filters['client_id']);
-        }
-    }
-
-    private function applyDateRange(\Illuminate\Database\Eloquent\Builder $q, array $filters, string $column = 'created_at'): void
-    {
-        if (!empty($filters['date_from'])) {
-            $q->whereDate($column, '>=', $filters['date_from']);
-        }
-        if (!empty($filters['date_to'])) {
-            $q->whereDate($column, '<=', $filters['date_to']);
-        }
-    }
-
-    private function clientQuery(bool $isAm, $user, array $filters = []): \Illuminate\Database\Eloquent\Builder
-    {
-        $q = \App\Models\Client::query();
-        if ($isAm) $q->where('manager_id', $user->id);
-        if (!empty($filters['manager_id']) && $user->isSuperAdmin()) {
-            $q->where('manager_id', $filters['manager_id']);
-        }
-        if (!empty($filters['client_type'])) {
-            $q->where('client_type', $filters['client_type']);
-        }
-        if (!empty($filters['country'])) {
-            $q->where('country', $filters['country']);
-        }
-        if (!empty($filters['industry'])) {
-            $q->where('industry', $filters['industry']);
-        }
-        $this->applyDateRange($q, $filters);
-        return $q;
-    }
-
-    private function workspaceQuery(bool $isAm, $user, array $filters = []): \Illuminate\Database\Eloquent\Builder
-    {
-        $q = \App\Models\Workspace::query();
-        if ($isAm) $q->whereHas('client', fn($cq) => $cq->where('manager_id', $user->id));
-        if (!empty($filters['client_id'])) {
-            $q->where('client_id', $filters['client_id']);
-        }
-        $this->applyDateRange($q, $filters);
-        return $q;
-    }
-
-    private function contractQuery(bool $isAm, $user, array $filters = []): \Illuminate\Database\Eloquent\Builder
-    {
-        $q = \App\Models\Contract::query();
-        if ($isAm) $q->whereHas('workspace.client', fn($cq) => $cq->where('manager_id', $user->id));
-        if (!empty($filters['client_id'])) {
-            $q->whereHas('workspace', fn($wq) => $wq->where('client_id', $filters['client_id']));
-        }
-        $this->applyDateRange($q, $filters);
-        return $q;
-    }
-
-    private function paymentQuery(bool $isAm, $user, array $filters = []): \Illuminate\Database\Eloquent\Builder
-    {
-        $q = \App\Models\Payment::query();
-        if ($isAm) $q->whereHas('client', fn($cq) => $cq->where('manager_id', $user->id));
-        $this->applyClientFilters($q, $filters);
-        $this->applyDateRange($q, $filters);
-        return $q;
-    }
-
-    private function approvalQuery(bool $isAm, $user, array $filters = []): \Illuminate\Database\Eloquent\Builder
-    {
-        $q = \App\Models\Approval::query();
-        if ($isAm) $q->whereHas('workspace.client', fn($cq) => $cq->where('manager_id', $user->id));
-        if (!empty($filters['client_id'])) {
-            $q->whereHas('workspace', fn($wq) => $wq->where('client_id', $filters['client_id']));
-        }
-        $this->applyDateRange($q, $filters);
-        return $q;
-    }
-
-    private function auditLogQuery(bool $isAm, $user, array $filters = []): \Illuminate\Database\Eloquent\Builder
-    {
-        $q = AuditLog::query();
-        if ($isAm) {
-            $clientIds = $user->managedClients()->pluck('id');
-            $q->where(function ($q) use ($user, $clientIds) {
-                $q->where('user_id', $user->id)
-                  ->orWhereIn('client_id', $clientIds)
-                  ->orWhereIn('auditable_id', $clientIds);
-            });
-        }
-        if (!empty($filters['client_id'])) {
-            $q->where('client_id', $filters['client_id']);
-        }
-        $this->applyDateRange($q, $filters);
-        return $q;
     }
 }
