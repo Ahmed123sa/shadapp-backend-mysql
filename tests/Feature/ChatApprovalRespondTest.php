@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\MessageUpdated;
 use App\Mail\ApprovalCertificateMail;
 use App\Models\Approval;
 use App\Models\ChatMessage;
@@ -10,6 +11,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Notifications\ApprovalRespondedNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
@@ -84,5 +86,25 @@ class ChatApprovalRespondTest extends TestCase
 
         Notification::assertNotSentTo($this->manager, ApprovalRespondedNotification::class);
         $this->assertSame('approved', Approval::find($this->message->approval_id)->status);
+    }
+
+    public function test_the_broadcast_card_carries_the_certificate(): void
+    {
+        Event::fake([MessageUpdated::class]);
+
+        $this->respond('approved');
+
+        Event::assertDispatched(MessageUpdated::class,
+            fn (MessageUpdated $e) => $e->message->approval?->certificate?->pdf_url !== null);
+    }
+
+    public function test_the_updated_card_is_broadcast_live(): void
+    {
+        Event::fake([MessageUpdated::class]);
+
+        $this->respond('edit_requested');
+
+        Event::assertDispatched(MessageUpdated::class,
+            fn (MessageUpdated $e) => $e->message->id === $this->message->id && $e->message->action_result === 'edit_requested');
     }
 }

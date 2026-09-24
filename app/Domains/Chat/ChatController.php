@@ -215,6 +215,19 @@ class ChatController extends Controller
             \App\Events\ApprovalResponded::dispatch($approval);
         }
 
+        // 23 Sept 2026 — push the updated card (approved / edit requested)
+        // to anyone with this chat open; without it the manager only saw the
+        // client's answer after a refresh. Sent after the certificate exists
+        // and with it loaded, because mobile replaces the whole message and
+        // the card's "download certificate" button reads
+        // approval.certificate.pdf_url.
+        try {
+            $chatMessage->load('approval.certificate');
+            broadcast(new \App\Events\MessageUpdated($chatMessage))->toOthers();
+        } catch (\Throwable $e) {
+            Log::warning('Chat respond broadcast failed (non-critical): ' . $e->getMessage());
+        }
+
         AuditLog::create(array_filter([
             'auditable_type' => ChatMessage::class,
             'auditable_id' => $chatMessage->id,
