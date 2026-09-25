@@ -232,6 +232,39 @@ class NotificationSystemTest extends TestCase
         $this->assertContains('phone-2', $tokens);
     }
 
+    // plans/notifications-badges-toasts-plan.md ن1 — logout never removed the
+    // device's token, so the next person to log in on the same phone kept
+    // getting the previous account's push notifications.
+    public function test_unregister_token_removes_it(): void
+    {
+        $this->actingAs($this->manager, 'sanctum')->postJson('/api/notifications/register-token', [
+            'token' => 'to-be-removed',
+            'device_type' => 'android',
+        ]);
+        $this->assertDatabaseHas('mobile_notification_tokens', ['token' => 'to-be-removed']);
+
+        $response = $this->actingAs($this->manager, 'sanctum')->postJson('/api/notifications/unregister-token', [
+            'token' => 'to-be-removed',
+        ]);
+        $response->assertStatus(200);
+
+        $this->assertDatabaseMissing('mobile_notification_tokens', ['token' => 'to-be-removed']);
+    }
+
+    public function test_unregister_token_requires_auth(): void
+    {
+        $response = $this->postJson('/api/notifications/unregister-token', ['token' => 'anything']);
+        $response->assertStatus(401);
+    }
+
+    public function test_unregister_token_ignores_a_token_that_does_not_exist(): void
+    {
+        $response = $this->actingAs($this->manager, 'sanctum')->postJson('/api/notifications/unregister-token', [
+            'token' => 'never-registered',
+        ]);
+        $response->assertStatus(200);
+    }
+
     public function test_fcm_channel_sends_without_exception(): void
     {
         MobileNotificationToken::create([

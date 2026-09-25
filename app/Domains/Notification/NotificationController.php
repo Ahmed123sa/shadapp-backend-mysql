@@ -44,6 +44,31 @@ class NotificationController extends Controller
         return response()->json(['message' => 'Token registered']);
     }
 
+    /**
+     * plans/notifications-badges-toasts-plan.md ن1 — logout never removed
+     * this device's token, so whoever logged in next on the same phone kept
+     * receiving the previous account's push notifications until the app was
+     * fully closed and reopened. The mobile app calls this before
+     * /auth/logout (which would otherwise revoke the token this endpoint
+     * needs to authenticate).
+     *
+     * Deletes by token value alone, with no ownership check against the
+     * authenticated user — matching registerToken() above, which likewise
+     * reassigns a token's owner via updateOrCreate() without checking who
+     * held it before. The token value itself is the only thing a caller
+     * needs to act on it either way.
+     */
+    public function unregisterToken(Request $request): JsonResponse
+    {
+        $request->validate([
+            'token' => 'required|string',
+        ]);
+
+        MobileNotificationToken::where('token', $request->token)->delete();
+
+        return response()->json(['message' => 'Token unregistered']);
+    }
+
     public function sendFcm(Request $request): JsonResponse
     {
         $request->validate([

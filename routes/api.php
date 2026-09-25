@@ -64,6 +64,7 @@ Route::middleware(['auth.any:sanctum,client,sub_user', 'scope.workspace'])->grou
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
     Route::post('/notifications/register-token', [NotificationController::class, 'registerToken']);
+    Route::post('/notifications/unregister-token', [NotificationController::class, 'unregisterToken']);
 
     // Client show, signature + profile (client or manager)
     Route::get('/clients/{client}', [ClientController::class, 'show']);
