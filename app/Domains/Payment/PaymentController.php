@@ -212,11 +212,16 @@ class PaymentController extends Controller
             return response()->json(['message' => 'يوجد طلب دفع معلق لهذا العقد بالفعل'], 422);
         }
 
+        $currency = $this->resolveCurrency($workspace, $contract, $request->currency);
+        if ($currency === null) {
+            return $this->ambiguousCurrencyResponse();
+        }
+
         $payment = $workspace->payments()->create([
             'client_id' => $workspace->client_id,
             'contract_id' => $contract?->id,
             'amount' => $request->amount,
-            'currency' => $request->currency ?? 'SAR',
+            'currency' => $currency,
             'method_type' => $request->method_type,
             'proof_file_url' => $proofFileUrl,
             'notes' => $request->notes,
@@ -256,7 +261,13 @@ class PaymentController extends Controller
         ]);
 
         if ($request->has('amount')) $payment->amount = $request->amount;
-        if ($request->has('currency')) $payment->currency = $request->currency;
+        if ($request->has('currency')) {
+            $currency = $this->resolveCurrency($workspace, $payment->contract, $request->currency);
+            if ($currency === null) {
+                return $this->ambiguousCurrencyResponse();
+            }
+            $payment->currency = $currency;
+        }
         if ($request->has('method_type')) $payment->method_type = $request->method_type;
 
         if ($request->hasFile('proof_files')) {
@@ -375,6 +386,7 @@ class PaymentController extends Controller
             'installments' => 'required|array|min:1',
             'installments.*.amount' => 'required|numeric|min:0',
             'installments.*.currency' => 'nullable|string|max:10',
+            'installments.*.contract_id' => 'nullable|integer',
             'installments.*.due_date' => 'required|date|after_or_equal:today',
             'installments.*.installment_label' => 'nullable|string|max:100',
             'installments.*.notes' => 'nullable|string|max:500',
@@ -382,10 +394,24 @@ class PaymentController extends Controller
 
         $payments = [];
         foreach ($request->installments as $i => $inst) {
+            $contract = null;
+            if (!empty($inst['contract_id'])) {
+                $contract = $workspace->contracts()->find($inst['contract_id']);
+                if (!$contract) {
+                    return response()->json(['message' => 'العقد المحدد غير تابع لهذه المساحة'], 422);
+                }
+            }
+
+            $currency = $this->resolveCurrency($workspace, $contract, $inst['currency'] ?? null);
+            if ($currency === null) {
+                return $this->ambiguousCurrencyResponse();
+            }
+
             $payment = $workspace->payments()->create([
                 'client_id' => $workspace->client_id,
+                'contract_id' => $contract?->id,
                 'amount' => $inst['amount'],
-                'currency' => $inst['currency'] ?? 'SAR',
+                'currency' => $currency,
                 'method_type' => 'scheduled',
                 'due_date' => $inst['due_date'],
                 'installment_label' => $inst['installment_label'] ?? $this->arabicOrdinal($i + 1),
@@ -420,13 +446,28 @@ class PaymentController extends Controller
         $request->validate([
             'amount' => 'required|numeric|min:0',
             'currency' => 'nullable|string|max:10',
+            'contract_id' => 'nullable|integer',
             'notes' => 'nullable|string|max:500',
         ]);
 
+        $contract = null;
+        if ($request->filled('contract_id')) {
+            $contract = $workspace->contracts()->find($request->contract_id);
+            if (!$contract) {
+                return response()->json(['message' => 'العقد المحدد غير تابع لهذه المساحة'], 422);
+            }
+        }
+
+        $currency = $this->resolveCurrency($workspace, $contract, $request->currency);
+        if ($currency === null) {
+            return $this->ambiguousCurrencyResponse();
+        }
+
         $payment = $workspace->payments()->create([
             'client_id' => $workspace->client_id,
+            'contract_id' => $contract?->id,
             'amount' => $request->amount,
-            'currency' => $request->currency ?? 'SAR',
+            'currency' => $currency,
             'method_type' => 'requested',
             'requested_by_manager' => true,
             'status' => 'scheduled',
@@ -556,6 +597,73 @@ class PaymentController extends Controller
     {
         $labels = ['الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس', 'السادس', 'السابع', 'الثامن', 'التاسع', 'العاشر'];
         return 'القسط ' . ($labels[$n - 1] ?? $n);
+    }
+
+    /**
+     * A payment's currency is never taken at face value from the request —
+     * it must always match the currency of the contract it belongs to, so
+     * clients (including old app versions that still default to SAR) can
+     * never record a payment in a currency the contract isn't in. See
+     * plans/payment-currency-plan.md.
+     *
+     * - Contract given: return its currency, always. If $requestedCurrency
+     *   disagreed, that's logged but silently overridden, not surfaced.
+     * - No contract, but every contract on the workspace (any status,
+     *   including archived) shares one currency: return that currency,
+     *   same silent-override-and-log behavior.
+     * - No contract, workspace's contracts span more than one currency:
+     *   $requestedCurrency must be one of them, otherwise this is genuinely
+     *   ambiguous and we return null so the caller can reject with a 422
+     *   asking the user to pick a contract.
+     * - Workspace has no contracts at all: unchanged legacy behavior,
+     *   $requestedCurrency (or SAR) is used as-is.
+     */
+    private function resolveCurrency(Workspace $workspace, ?Contract $contract, ?string $requestedCurrency): ?string
+    {
+        if ($contract) {
+            if ($requestedCurrency && $requestedCurrency !== $contract->currency) {
+                Log::info('Payment currency overridden to match its linked contract', [
+                    'workspace_id' => $workspace->id,
+                    'contract_id' => $contract->id,
+                    'requested_currency' => $requestedCurrency,
+                    'contract_currency' => $contract->currency,
+                ]);
+            }
+            return $contract->currency;
+        }
+
+        $workspaceCurrencies = $workspace->contracts()->pluck('currency')->unique()->values();
+
+        if ($workspaceCurrencies->isEmpty()) {
+            return $requestedCurrency ?? 'SAR';
+        }
+
+        if ($workspaceCurrencies->count() === 1) {
+            $only = $workspaceCurrencies->first();
+            if ($requestedCurrency && $requestedCurrency !== $only) {
+                Log::info('Payment currency overridden to match the workspace\'s only contract currency', [
+                    'workspace_id' => $workspace->id,
+                    'requested_currency' => $requestedCurrency,
+                    'contract_currency' => $only,
+                ]);
+            }
+            return $only;
+        }
+
+        // Multiple contract currencies and nothing to link this payment to
+        // a specific one: only accept a currency that matches one of them.
+        if ($requestedCurrency && $workspaceCurrencies->contains($requestedCurrency)) {
+            return $requestedCurrency;
+        }
+
+        return null;
+    }
+
+    private function ambiguousCurrencyResponse(): JsonResponse
+    {
+        return response()->json([
+            'message' => 'العميل عنده عقود بأكتر من عملة، حدد العقد أو اكتب عملة أحد عقوده.',
+        ], 422);
     }
 
     private function sendScheduleNotifications(Payment $payment, string $action): void
