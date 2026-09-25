@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Approval;
+use App\Models\ChatMessage;
 use App\Models\Client;
 use App\Models\Contract;
 use App\Models\Meeting;
@@ -13,15 +14,25 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Notifications\ApprovalRequestedNotification;
 use App\Notifications\ApprovalRespondedNotification;
+use App\Notifications\BirthdayGreetingNotification;
 use App\Notifications\BirthdayReminderNotification;
+use App\Notifications\ChatMessageSentNotification;
 use App\Notifications\ContractClientApprovedNotification;
+use App\Notifications\ContractClientSignedNotification;
 use App\Notifications\ContractCompanyApprovedNotification;
 use App\Notifications\ContractCompletedNotification;
+use App\Notifications\ContractEditRequestedNotification;
+use App\Notifications\ContractReceivedNotification;
+use App\Notifications\ContractReminderNotification;
 use App\Notifications\ContractSentNotification;
 use App\Notifications\FcmChannel;
 use App\Notifications\MeetingReminderNotification;
 use App\Notifications\PaymentCreatedNotification;
+use App\Notifications\PaymentReminderNotification;
 use App\Notifications\PaymentReviewedNotification;
+use App\Notifications\PaymentScheduleDeletedNotification;
+use App\Notifications\PaymentScheduleUpdatedNotification;
+use App\Notifications\PaymentScheduledNotification;
 use App\Services\FirebaseService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -486,5 +497,77 @@ class NotificationSystemTest extends TestCase
         (new FcmChannel())->send($this->manager, new ContractSentNotification($this->contract));
 
         $this->assertEquals(['manager-token'], $sentTokens);
+    }
+
+    // plans/notifications-badges-toasts-plan.md ن4 — the backend used
+    // 'message' for some types and 'body' for others, and left 'title'
+    // entirely out of several, so NotificationBell.tsx/app_notification.dart
+    // (which only ever read 'message') showed an empty line for those. ن3's
+    // workspace_id/client_id gap applied to every one of these, not just the
+    // reminder types ح2 already covered. Every notification type below must
+    // now carry all four fields.
+    public function test_every_notification_type_includes_title_message_workspace_and_client_ids(): void
+    {
+        $cases = [
+            new ContractSentNotification($this->contract),
+            new ContractReminderNotification($this->contract),
+            new ContractEditRequestedNotification($this->contract),
+            new ContractCompletedNotification($this->contract),
+            new ContractReceivedNotification($this->contract),
+            new ContractClientApprovedNotification($this->contract),
+            new ContractCompanyApprovedNotification($this->contract),
+            new ContractClientSignedNotification($this->contract),
+            new ApprovalRequestedNotification($this->approval),
+            new ApprovalRespondedNotification($this->approval),
+            new PaymentCreatedNotification($this->payment),
+            new PaymentReminderNotification($this->payment, '3_days'),
+            new PaymentScheduledNotification($this->payment),
+            new PaymentScheduleUpdatedNotification($this->payment),
+            new PaymentScheduleDeletedNotification($this->payment),
+            new PaymentReviewedNotification($this->payment, 'approved'),
+            new PaymentReviewedNotification($this->payment, 'rejected'),
+            new BirthdayReminderNotification($this->client),
+            new BirthdayGreetingNotification($this->client),
+        ];
+
+        foreach ($cases as $notification) {
+            $class = get_class($notification);
+            $data = $notification->toDatabase($this->manager);
+
+            $this->assertNotEmpty($data['title'] ?? null, "{$class}::toDatabase() is missing a non-empty title");
+            $this->assertNotEmpty($data['message'] ?? null, "{$class}::toDatabase() is missing a non-empty message");
+            $this->assertNotNull($data['workspace_id'] ?? null, "{$class}::toDatabase() is missing workspace_id");
+            $this->assertNotNull($data['client_id'] ?? null, "{$class}::toDatabase() is missing client_id");
+        }
+    }
+
+    public function test_chat_message_notification_includes_title_message_workspace_and_client_ids(): void
+    {
+        $message = ChatMessage::create([
+            'workspace_id' => $this->workspace->id,
+            'sender_type' => User::class,
+            'sender_id' => $this->manager->id,
+            'message' => 'أهلاً',
+        ]);
+
+        $data = (new ChatMessageSentNotification($message))->toDatabase($this->client);
+
+        $this->assertNotEmpty($data['title'] ?? null);
+        $this->assertNotEmpty($data['message'] ?? null);
+        $this->assertEquals($this->workspace->id, $data['workspace_id']);
+        $this->assertEquals($this->client->id, $data['client_id']);
+    }
+
+    // plans/notifications-badges-toasts-plan.md ن5 — PaymentReviewedNotification
+    // ::toFcm used to hardcode 'payment.approved' as the FCM data.type even
+    // when the payment was rejected, so a rejected payment's push looked
+    // identical (by type) to an approved one.
+    public function test_payment_reviewed_fcm_type_reflects_rejection(): void
+    {
+        $approved = (new PaymentReviewedNotification($this->payment, 'approved'))->toFcm($this->client);
+        $rejected = (new PaymentReviewedNotification($this->payment, 'rejected'))->toFcm($this->client);
+
+        $this->assertEquals('payment.approved', $approved['data']['type']);
+        $this->assertEquals('payment.rejected', $rejected['data']['type']);
     }
 }

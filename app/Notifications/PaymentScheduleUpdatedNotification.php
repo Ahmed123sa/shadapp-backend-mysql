@@ -10,12 +10,15 @@ class PaymentScheduleUpdatedNotification extends BaseNotification
 
     public function toDatabase(object $notifiable): array
     {
+        $body = 'تم تعديل القسط ' . ($this->payment->installment_label ?? '') . ' — المبلغ الجديد: ' . number_format((float) $this->payment->amount, 2) . ' ' . ($this->payment->currency ?? 'SAR');
         return [
             'type' => 'payment_schedule_updated',
             'title' => 'تم تعديل قسط',
-            'body' => 'تم تعديل القسط ' . ($this->payment->installment_label ?? '') . ' — المبلغ الجديد: ' . number_format((float) $this->payment->amount, 2) . ' ' . ($this->payment->currency ?? 'SAR'),
+            'body' => $body,
+            'message' => $body,
             'payment_id' => $this->payment->id,
             'workspace_id' => $this->payment->workspace_id,
+            'client_id' => $this->payment->client_id,
             'due_date' => $this->payment->due_date?->toDateString(),
         ];
     }
@@ -28,6 +31,8 @@ class PaymentScheduleUpdatedNotification extends BaseNotification
             'data' => [
                 'type' => 'payment_schedule_updated',
                 'id' => (string) $this->payment->id,
+                'workspace_id' => (string) $this->payment->workspace_id,
+                'client_id' => (string) $this->payment->client_id,
             ],
         ];
     }

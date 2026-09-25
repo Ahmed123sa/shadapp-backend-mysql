@@ -24,6 +24,7 @@ class MeetingReminderNotification extends BaseNotification
             // workspaces via workspace_id/contract_id/payment_id/
             // approval_id, and this had none of those.
             'workspace_id' => $this->meeting->workspace_id,
+            'client_id' => $this->meeting->workspace?->client_id,
             'title' => $this->meeting->title,
             'scheduled_at' => $this->meeting->scheduled_at,
             'message' => "تذكير باجتماع: {$this->meeting->title}",
@@ -40,6 +41,8 @@ class MeetingReminderNotification extends BaseNotification
             'data' => [
                 'type' => 'meeting',
                 'id' => (string) $this->meeting->id,
+                'workspace_id' => (string) $this->meeting->workspace_id,
+                'client_id' => (string) ($this->meeting->workspace?->client_id ?? ''),
             ],
         ];
     }

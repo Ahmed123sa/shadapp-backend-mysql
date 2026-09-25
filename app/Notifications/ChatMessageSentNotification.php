@@ -22,6 +22,7 @@ class ChatMessageSentNotification extends BaseNotification
             'client_id' => $this->message->workspace->client_id,
             'sender_name' => $senderName,
             'text' => $this->message->message ?? '',
+            'title' => $senderName,
             'message' => "رسالة جديدة من {$senderName}",
         ];
     }

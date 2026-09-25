@@ -21,7 +21,11 @@ class BirthdayGreetingNotification extends BaseNotification
             'type' => 'birthday_greeting',
             'title' => 'عيد ميلاد سعيد!',
             'body' => "كل سنة وأنت طيب! نتمنى لك عاماً موفقاً",
+            'message' => "كل سنة وأنت طيب! نتمنى لك عاماً موفقاً",
             'client_id' => $this->client->id,
+            // plans/notifications-badges-toasts-plan.md ن3 — same reasoning
+            // as BirthdayReminderNotification.
+            'workspace_id' => $this->client->workspace?->id,
         ];
     }
 
@@ -33,6 +37,7 @@ class BirthdayGreetingNotification extends BaseNotification
             'data' => [
                 'type' => 'birthday_greeting',
                 'client_id' => (string) $this->client->id,
+                'workspace_id' => (string) ($this->client->workspace?->id ?? ''),
             ],
         ];
     }

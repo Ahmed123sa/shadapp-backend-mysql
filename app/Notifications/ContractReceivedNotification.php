@@ -38,6 +38,7 @@ class ContractReceivedNotification extends BaseNotification
             'title' => $this->contract->title,
             'message' => "وصلك عقد جديد بانتظار مراجعتك: {$this->contract->title}",
             'workspace_id' => $this->contract->workspace_id,
+            'client_id' => $this->contract->workspace?->client_id,
         ];
     }
 
@@ -50,6 +51,7 @@ class ContractReceivedNotification extends BaseNotification
                 'type' => 'contract.received',
                 'id' => (string) $this->contract->id,
                 'workspace_id' => (string) $this->contract->workspace_id,
+                'client_id' => (string) ($this->contract->workspace?->client_id ?? ''),
             ],
         ];
     }

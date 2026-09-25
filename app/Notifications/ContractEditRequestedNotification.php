@@ -20,6 +20,8 @@ class ContractEditRequestedNotification extends BaseNotification
             'contract_id' => $this->contract->id,
             'title' => $this->contract->title,
             'message' => "طلب تعديل على العقد: {$this->contract->title}",
+            'workspace_id' => $this->contract->workspace_id,
+            'client_id' => $this->contract->workspace?->client_id,
         ];
     }
 
@@ -31,6 +33,8 @@ class ContractEditRequestedNotification extends BaseNotification
             'data' => [
                 'type' => 'contract',
                 'id' => (string) $this->contract->id,
+                'workspace_id' => (string) $this->contract->workspace_id,
+                'client_id' => (string) ($this->contract->workspace?->client_id ?? ''),
             ],
         ];
     }

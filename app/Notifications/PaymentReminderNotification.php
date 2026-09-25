@@ -20,12 +20,16 @@ class PaymentReminderNotification extends BaseNotification
             'overdue' => 'تنبيه: دفعة متأخرة عن موعد الاستحقاق',
         ];
 
+        $body = number_format((float) $this->payment->amount, 2) . ' ' . $currency . ' — ' . ($this->payment->installment_label ?? '');
+
         return [
             'type' => 'payment_reminder',
             'title' => $messages[$this->reminderType] ?? 'تذكير بالدفع',
-            'body' => number_format((float) $this->payment->amount, 2) . ' ' . $currency . ' — ' . ($this->payment->installment_label ?? ''),
+            'body' => $body,
+            'message' => $body,
             'payment_id' => $this->payment->id,
             'workspace_id' => $this->payment->workspace_id,
+            'client_id' => $this->payment->client_id,
             'reminder_type' => $this->reminderType,
             'due_date' => $this->payment->due_date?->toDateString(),
         ];
@@ -46,6 +50,8 @@ class PaymentReminderNotification extends BaseNotification
             'data' => [
                 'type' => 'payment_reminder',
                 'id' => (string) $this->payment->id,
+                'workspace_id' => (string) $this->payment->workspace_id,
+                'client_id' => (string) $this->payment->client_id,
             ],
         ];
     }

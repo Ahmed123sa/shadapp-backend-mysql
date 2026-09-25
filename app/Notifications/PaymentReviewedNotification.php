@@ -22,6 +22,7 @@ class PaymentReviewedNotification extends BaseNotification
         if ($this->workspaceActivated) {
             return [
                 'type' => 'workspace_activated',
+                'title' => 'تم تفعيل مساحة العمل',
                 'workspace_id' => $this->payment->workspace_id,
                 'client_id' => $this->payment->client_id,
                 'message' => 'تم اعتماد الدفعة وتفعيل مساحة العمل — يمكنك الآن التواصل مع مدير الحساب',
@@ -31,6 +32,7 @@ class PaymentReviewedNotification extends BaseNotification
         $label = $this->action === 'rejected' ? 'رفضها' : 'اعتمادها';
         return [
             'type' => 'payment_reviewed',
+            'title' => $this->action === 'rejected' ? 'تم رفض الدفعة' : 'تم اعتماد الدفعة',
             'payment_id' => $this->payment->id,
             'action' => $this->action,
             'amount' => $this->payment->amount,
@@ -56,11 +58,15 @@ class PaymentReviewedNotification extends BaseNotification
         }
         $currency = $this->payment->currency ?? 'SAR';
         $body = $this->action === 'rejected' ? "الدفعة {$this->payment->amount} {$currency} مرفوضة" : "الدفعة {$this->payment->amount} {$currency} مقبولة";
+        // plans/notifications-badges-toasts-plan.md ن5 — this used to send
+        // 'payment.approved' here regardless of $this->action, so a rejected
+        // payment's push carried the exact same type as an approved one.
+        $type = $this->action === 'rejected' ? 'payment.rejected' : 'payment.approved';
         return [
             'title' => 'مراجعة دفعة',
             'body' => $body,
             'data' => [
-                'type' => 'payment.approved',
+                'type' => $type,
                 'id' => (string) $this->payment->id,
                 'workspace_id' => (string) $this->payment->workspace_id,
                 'client_id' => (string) $this->payment->client_id,

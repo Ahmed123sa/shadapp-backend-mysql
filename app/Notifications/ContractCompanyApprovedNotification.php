@@ -21,6 +21,7 @@ class ContractCompanyApprovedNotification extends BaseNotification
             'title' => 'تم اعتماد العقد نهائياً',
             'message' => 'تم اعتماد العقد ' . $this->contract->title . ' من الطرفين. يمكنك الآن الدفع.',
             'workspace_id' => $this->contract->workspace_id,
+            'client_id' => $this->contract->workspace?->client_id,
         ];
     }
 
@@ -29,7 +30,12 @@ class ContractCompanyApprovedNotification extends BaseNotification
         return [
             'title' => 'اعتماد نهائي للعقد',
             'body' => 'تم اعتماد العقد ' . $this->contract->title . ' من الطرفين.',
-            'data' => ['type' => 'contract.company_approved', 'id' => (string) $this->contract->id],
+            'data' => [
+                'type' => 'contract.company_approved',
+                'id' => (string) $this->contract->id,
+                'workspace_id' => (string) $this->contract->workspace_id,
+                'client_id' => (string) ($this->contract->workspace?->client_id ?? ''),
+            ],
         ];
     }
     public function toBroadcast($notifiable): array

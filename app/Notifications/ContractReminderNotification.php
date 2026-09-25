@@ -20,6 +20,8 @@ class ContractReminderNotification extends BaseNotification
             'contract_id' => $this->contract->id,
             'title' => $this->contract->title,
             'message' => "تذكير: العقد {$this->contract->title} ينتظر مراجعتك",
+            'workspace_id' => $this->contract->workspace_id,
+            'client_id' => $this->contract->workspace?->client_id,
         ];
     }
 
@@ -31,6 +33,8 @@ class ContractReminderNotification extends BaseNotification
             'data' => [
                 'type' => 'contract',
                 'id' => (string) $this->contract->id,
+                'workspace_id' => (string) $this->contract->workspace_id,
+                'client_id' => (string) ($this->contract->workspace?->client_id ?? ''),
             ],
         ];
     }
