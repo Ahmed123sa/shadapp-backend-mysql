@@ -42,8 +42,18 @@ class SendMeetingReminders extends Command
                 $sent++;
             }
 
+            // plans/notifications-badges-toasts-plan.md ن3 — $client->id is a
+            // primary key on the clients table; $creator/$manager->id are
+            // primary keys on users. Comparing them across tables was
+            // comparing unrelated id spaces — a client and a manager sharing
+            // the same numeric id (e.g. both id 5, on any two rows in two
+            // different tables) silently skipped notifying the client every
+            // time their meeting reminder fired. A Client can never actually
+            // be the same record as the meeting's creator or manager, so
+            // there was nothing for this comparison to correctly guard
+            // against in the first place.
             $client = $meeting->workspace?->client;
-            if ($client && $client->id !== ($creator?->id) && $client->id !== ($manager?->id)) {
+            if ($client) {
                 $client->notify(new MeetingReminderNotification($meeting));
                 $sent++;
             }

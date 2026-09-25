@@ -5,19 +5,24 @@ namespace Tests\Feature;
 use App\Models\Approval;
 use App\Models\Client;
 use App\Models\Contract;
+use App\Models\Meeting;
 use App\Models\MobileNotificationToken;
 use App\Models\Payment;
+use App\Models\SubUser;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Notifications\ApprovalRequestedNotification;
 use App\Notifications\ApprovalRespondedNotification;
+use App\Notifications\BirthdayReminderNotification;
 use App\Notifications\ContractClientApprovedNotification;
 use App\Notifications\ContractCompanyApprovedNotification;
 use App\Notifications\ContractCompletedNotification;
 use App\Notifications\ContractSentNotification;
 use App\Notifications\FcmChannel;
+use App\Notifications\MeetingReminderNotification;
 use App\Notifications\PaymentCreatedNotification;
 use App\Notifications\PaymentReviewedNotification;
+use App\Services\FirebaseService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
@@ -265,6 +270,123 @@ class NotificationSystemTest extends TestCase
         $response->assertStatus(200);
     }
 
+    // plans/notifications-badges-toasts-plan.md ن2 — a sub-user used to see
+    // every one of its parent client's notifications regardless of its own
+    // permissions, unlike /badge-counts, which already zeroes out counts the
+    // sub-user isn't permitted to view.
+    public function test_sub_user_only_sees_notifications_for_permissions_it_has(): void
+    {
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'permissions' => ['can_view_contracts' => true, 'can_view_payments' => false, 'can_view_approvals' => false],
+        ]);
+
+        $this->client->notify(new ContractSentNotification($this->contract));
+        $this->client->notify(new PaymentCreatedNotification($this->payment));
+        $this->client->notify(new ApprovalRequestedNotification($this->approval));
+
+        $response = $this->actingAs($subUser, 'sub_user')->getJson('/api/notifications');
+        $response->assertStatus(200);
+
+        $types = collect($response->json('notifications'))->pluck('data.type');
+        $this->assertContains('contract_sent', $types);
+        $this->assertNotContains('payment_created', $types);
+        $this->assertNotContains('approval_requested', $types);
+        $this->assertEquals(1, $response->json('unread_count'));
+    }
+
+    // A sub-user with every relevant permission sees the same list a client
+    // logged in directly would.
+    public function test_sub_user_sees_everything_when_it_has_every_permission(): void
+    {
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'permissions' => ['can_view_contracts' => true, 'can_view_payments' => true, 'can_view_approvals' => true],
+        ]);
+
+        $this->client->notify(new ContractSentNotification($this->contract));
+        $this->client->notify(new PaymentCreatedNotification($this->payment));
+        $this->client->notify(new ApprovalRequestedNotification($this->approval));
+
+        $response = $this->actingAs($subUser, 'sub_user')->getJson('/api/notifications');
+
+        $this->assertCount(3, $response->json('notifications'));
+    }
+
+    public function test_sub_user_mark_all_as_read_only_marks_notifications_it_can_see(): void
+    {
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'permissions' => ['can_view_contracts' => true, 'can_view_payments' => false],
+        ]);
+        $this->client->notify(new ContractSentNotification($this->contract));
+        $this->client->notify(new PaymentCreatedNotification($this->payment));
+
+        $response = $this->actingAs($subUser, 'sub_user')->postJson('/api/notifications/read-all');
+        $response->assertStatus(200);
+
+        // A blanket update(['read_at' => now()]) here would have marked both
+        // read on behalf of a sub-user who was never shown the payment one.
+        $this->assertCount(1, $this->client->fresh()->readNotifications);
+        $this->assertCount(1, $this->client->fresh()->unreadNotifications);
+    }
+
+    public function test_sub_user_cannot_mark_as_read_a_notification_type_it_lacks_permission_for(): void
+    {
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'permissions' => ['can_view_payments' => false],
+        ]);
+        $this->client->notify(new PaymentCreatedNotification($this->payment));
+        $notifId = $this->client->fresh()->notifications->first()->id;
+
+        $response = $this->actingAs($subUser, 'sub_user')->postJson("/api/notifications/{$notifId}/read");
+        $response->assertStatus(200);
+
+        $this->assertNull($this->client->fresh()->notifications->first()->read_at);
+    }
+
+    // plans/notifications-badges-toasts-plan.md ن3 — a manager's own
+    // birthday/meeting reminders had none of workspace_id/contract_id/
+    // payment_id/approval_id, so GET /notifications' AM filter dropped them
+    // even though the push notification for the same event reached the
+    // manager fine.
+    public function test_manager_sees_birthday_and_meeting_reminders_via_workspace_id(): void
+    {
+        $meeting = Meeting::create([
+            'workspace_id' => $this->workspace->id,
+            'title' => 'Kickoff',
+            'scheduled_at' => now()->addMinutes(15),
+            'created_by' => $this->manager->id,
+        ]);
+
+        $this->manager->notify(new BirthdayReminderNotification($this->client));
+        $this->manager->notify(new MeetingReminderNotification($meeting));
+
+        $response = $this->actingAs($this->manager, 'sanctum')->getJson('/api/notifications');
+
+        $types = collect($response->json('notifications'))->pluck('data.type');
+        $this->assertContains('birthday_reminder', $types);
+        $this->assertContains('meeting_reminder', $types);
+    }
+
+    // A birthday reminder stored before workspace_id existed on it is still
+    // recovered via the client_id fallback, so already-sent reminders don't
+    // just disappear once this ships.
+    public function test_manager_sees_a_pre_existing_birthday_reminder_via_client_id_fallback(): void
+    {
+        $this->manager->notify(new BirthdayReminderNotification($this->client));
+        $stored = $this->manager->notifications()->first();
+        $data = $stored->data;
+        unset($data['workspace_id']);
+        $stored->forceFill(['data' => $data])->save();
+
+        $response = $this->actingAs($this->manager, 'sanctum')->getJson('/api/notifications');
+
+        $types = collect($response->json('notifications'))->pluck('data.type');
+        $this->assertContains('birthday_reminder', $types);
+    }
+
     public function test_fcm_channel_sends_without_exception(): void
     {
         MobileNotificationToken::create([
@@ -279,5 +401,90 @@ class NotificationSystemTest extends TestCase
 
         $channel->send($this->manager, $notification);
         $this->assertTrue(true, 'FcmChannel did not throw');
+    }
+
+    // plans/notifications-badges-toasts-plan.md ن14/ح2ب — a sub-user got no
+    // push at all before this, even for a type it's fully permitted to see.
+    // FcmChannel now also sends to a Client-directed notification's eligible
+    // sub-users, gated by the same SubUser::canSeeNotificationType() used by
+    // GET /notifications.
+    public function test_sub_user_receives_push_when_permitted_for_the_notification_type(): void
+    {
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'permissions' => ['can_view_contracts' => true],
+        ]);
+        MobileNotificationToken::create([
+            'token' => 'sub-user-allowed-token',
+            'tokenable_id' => $subUser->id,
+            'tokenable_type' => SubUser::class,
+            'device_type' => 'android',
+        ]);
+
+        $sentTokens = [];
+        $this->mock(FirebaseService::class, function ($mock) use (&$sentTokens) {
+            $mock->shouldReceive('sendMessage')
+                ->andReturnUsing(function (string $token) use (&$sentTokens) {
+                    $sentTokens[] = $token;
+                    return true;
+                });
+        });
+
+        (new FcmChannel())->send($this->client, new ContractSentNotification($this->contract));
+
+        $this->assertContains('sub-user-allowed-token', $sentTokens);
+    }
+
+    public function test_sub_user_does_not_receive_push_when_lacking_permission_for_the_notification_type(): void
+    {
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'permissions' => ['can_view_contracts' => false],
+        ]);
+        MobileNotificationToken::create([
+            'token' => 'sub-user-denied-token',
+            'tokenable_id' => $subUser->id,
+            'tokenable_type' => SubUser::class,
+            'device_type' => 'android',
+        ]);
+
+        $sentTokens = [];
+        $this->mock(FirebaseService::class, function ($mock) use (&$sentTokens) {
+            $mock->shouldReceive('sendMessage')
+                ->andReturnUsing(function (string $token) use (&$sentTokens) {
+                    $sentTokens[] = $token;
+                    return true;
+                });
+        });
+
+        (new FcmChannel())->send($this->client, new ContractSentNotification($this->contract));
+
+        $this->assertNotContains('sub-user-denied-token', $sentTokens);
+    }
+
+    // A notification sent directly to a User (a manager's own push, e.g.
+    // MeetingReminderNotification) must never touch sub-user gating at all —
+    // only Client-directed notifications flow through a sub-user's eyes.
+    public function test_push_to_a_manager_does_not_attempt_sub_user_gating(): void
+    {
+        MobileNotificationToken::create([
+            'token' => 'manager-token',
+            'tokenable_id' => $this->manager->id,
+            'tokenable_type' => User::class,
+            'device_type' => 'android',
+        ]);
+
+        $sentTokens = [];
+        $this->mock(FirebaseService::class, function ($mock) use (&$sentTokens) {
+            $mock->shouldReceive('sendMessage')
+                ->andReturnUsing(function (string $token) use (&$sentTokens) {
+                    $sentTokens[] = $token;
+                    return true;
+                });
+        });
+
+        (new FcmChannel())->send($this->manager, new ContractSentNotification($this->contract));
+
+        $this->assertEquals(['manager-token'], $sentTokens);
     }
 }

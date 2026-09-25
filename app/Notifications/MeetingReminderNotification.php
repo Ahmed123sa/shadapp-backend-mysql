@@ -18,6 +18,12 @@ class MeetingReminderNotification extends BaseNotification
         return [
             'type' => 'meeting_reminder',
             'meeting_id' => $this->meeting->id,
+            // plans/notifications-badges-toasts-plan.md ن3 — a manager
+            // viewing GET /notifications never saw this: the filter there
+            // only kept notifications resolvable to one of their managed
+            // workspaces via workspace_id/contract_id/payment_id/
+            // approval_id, and this had none of those.
+            'workspace_id' => $this->meeting->workspace_id,
             'title' => $this->meeting->title,
             'scheduled_at' => $this->meeting->scheduled_at,
             'message' => "تذكير باجتماع: {$this->meeting->title}",

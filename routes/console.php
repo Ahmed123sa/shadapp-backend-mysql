@@ -25,3 +25,9 @@ Schedule::command('db:backup')->dailyAt('03:00')->withoutOverlapping();
 // Staggered after the backup so the two aren't competing, and so the dump
 // captures the day's attempts before they're pruned rather than after.
 Schedule::command('login-attempts:prune')->dailyAt('04:00')->withoutOverlapping();
+
+// plans/notifications-badges-toasts-plan.md ن13 — GET /notifications has no
+// limit and nothing else ever deletes an old, already-read row, so the table
+// only grows. Staggered 30 minutes after login-attempts:prune for the same
+// reason that one is staggered after the backup.
+Schedule::command('notifications:prune')->dailyAt('04:30')->withoutOverlapping();

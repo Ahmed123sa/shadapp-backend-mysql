@@ -111,39 +111,68 @@ class NotificationController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $authUser = $request->user();
+        $subUser = $authUser instanceof SubUser ? $authUser : null;
+        $user = $subUser ? $subUser->client : $authUser;
 
-        if ($user instanceof SubUser) {
-            $client = $user->client;
-            $allNotifications = $client?->notifications()->latest()->get() ?? collect();
-        } else {
-            $allNotifications = $user?->notifications()->latest()->get() ?? collect();
+        $allNotifications = $user?->notifications()->latest()->get() ?? collect();
+
+        if ($subUser) {
+            $allNotifications = $allNotifications
+                ->filter(fn ($n) => $subUser->canSeeNotificationType($n->data['type'] ?? null))
+                ->values();
         }
 
-        if ($user instanceof User && $user->isAccountManager()) {
-            $workspaceIds = $user->managedClients()
-                ->with('workspace')
-                ->get()
-                ->pluck('workspace.id')
-                ->filter()
-                ->toArray();
+        // ن13 — resolves every contract/payment/approval a notification
+        // points at to its workspace_id in three batched whereIn() queries,
+        // instead of a Contract::find()/Payment::find()/Approval::find() per
+        // notification (and the AM filter below and the unread-clients-count
+        // loop after it used to each run that N+1 separately — twice the
+        // cost for nothing, since the answer for a given id never changes
+        // within one request).
+        $contractIds = [];
+        $paymentIds = [];
+        $approvalIds = [];
+        foreach ($allNotifications as $n) {
+            $data = $n->data ?? [];
+            if (isset($data['contract_id'])) $contractIds[] = $data['contract_id'];
+            if (isset($data['payment_id'])) $paymentIds[] = $data['payment_id'];
+            if (isset($data['approval_id'])) $approvalIds[] = $data['approval_id'];
+        }
+        $contractWorkspaces = $contractIds ? Contract::whereIn('id', array_unique($contractIds))->pluck('workspace_id', 'id') : collect();
+        $paymentWorkspaces = $paymentIds ? Payment::whereIn('id', array_unique($paymentIds))->pluck('workspace_id', 'id') : collect();
+        $approvalWorkspaces = $approvalIds ? Approval::whereIn('id', array_unique($approvalIds))->pluck('workspace_id', 'id') : collect();
 
-            $allNotifications = $allNotifications->filter(function ($n) use ($workspaceIds) {
+        $resolveWorkspaceId = function (array $data) use ($contractWorkspaces, $paymentWorkspaces, $approvalWorkspaces) {
+            if (isset($data['workspace_id'])) return $data['workspace_id'];
+            if (isset($data['contract_id'])) return $contractWorkspaces[$data['contract_id']] ?? null;
+            if (isset($data['payment_id'])) return $paymentWorkspaces[$data['payment_id']] ?? null;
+            if (isset($data['approval_id'])) return $approvalWorkspaces[$data['approval_id']] ?? null;
+            return null;
+        };
+
+        if ($authUser instanceof User && $authUser->isAccountManager()) {
+            $managedClients = $authUser->managedClients()->with('workspace')->get();
+            $workspaceIds = $managedClients->pluck('workspace.id')->filter()->toArray();
+            // ن3 — a manager's own birthday/meeting reminders had none of
+            // workspace_id/contract_id/payment_id/approval_id at all (only
+            // client_id, or nothing resolvable for meetings before today),
+            // so they silently vanished from this list even though the push
+            // notification for the same event reached the manager fine.
+            // New reminders now carry workspace_id directly (see
+            // BirthdayReminderNotification/MeetingReminderNotification), but
+            // this client_id fallback also recovers already-stored ones —
+            // BirthdayReminderNotification has always included client_id.
+            $clientIds = $managedClients->pluck('id')->toArray();
+
+            $allNotifications = $allNotifications->filter(function ($n) use ($workspaceIds, $clientIds, $resolveWorkspaceId) {
                 $data = $n->data ?? [];
-                if (isset($data['workspace_id'])) {
-                    return in_array($data['workspace_id'], $workspaceIds);
+                $workspaceId = $resolveWorkspaceId($data);
+                if ($workspaceId !== null) {
+                    return in_array($workspaceId, $workspaceIds);
                 }
-                if (isset($data['contract_id'])) {
-                    $contract = Contract::find($data['contract_id']);
-                    return $contract && in_array($contract->workspace_id, $workspaceIds);
-                }
-                if (isset($data['payment_id'])) {
-                    $payment = Payment::find($data['payment_id']);
-                    return $payment && in_array($payment->workspace_id, $workspaceIds);
-                }
-                if (isset($data['approval_id'])) {
-                    $approval = Approval::find($data['approval_id']);
-                    return $approval && in_array($approval->workspace_id, $workspaceIds);
+                if (isset($data['client_id'])) {
+                    return in_array($data['client_id'], $clientIds);
                 }
                 return false;
             })->values();
@@ -153,24 +182,13 @@ class NotificationController extends Controller
 
         $unreadClientIds = collect();
         if ($unreadCount > 0) {
-            $unreadNotifications = $allNotifications->whereNull('read_at');
-            foreach ($unreadNotifications as $n) {
-                $data = $n->data ?? [];
-                $workspaceId = $data['workspace_id'] ?? null;
-                if (!$workspaceId && isset($data['contract_id'])) {
-                    $contract = Contract::find($data['contract_id']);
-                    $workspaceId = $contract?->workspace_id;
-                } elseif (!$workspaceId && isset($data['payment_id'])) {
-                    $payment = Payment::find($data['payment_id']);
-                    $workspaceId = $payment?->workspace_id;
-                } elseif (!$workspaceId && isset($data['approval_id'])) {
-                    $approval = Approval::find($data['approval_id']);
-                    $workspaceId = $approval?->workspace_id;
-                }
-                if ($workspaceId) {
-                    $ws = Workspace::find($workspaceId);
-                    if ($ws) $unreadClientIds->push($ws->client_id);
-                }
+            $workspaceIdsNeeded = [];
+            foreach ($allNotifications->whereNull('read_at') as $n) {
+                $workspaceId = $resolveWorkspaceId($n->data ?? []);
+                if ($workspaceId) $workspaceIdsNeeded[] = $workspaceId;
+            }
+            if ($workspaceIdsNeeded) {
+                $unreadClientIds = Workspace::whereIn('id', array_unique($workspaceIdsNeeded))->pluck('client_id');
             }
         }
         $unreadClientsCount = $unreadClientIds->unique()->count();
@@ -186,12 +204,11 @@ class NotificationController extends Controller
 
     public function markAsRead(Request $request, string $id): JsonResponse
     {
-        $user = $request->user();
-        if ($user instanceof SubUser) {
-            $user = $user->client;
-        }
+        $authUser = $request->user();
+        $subUser = $authUser instanceof SubUser ? $authUser : null;
+        $user = $subUser ? $subUser->client : $authUser;
         $notification = $user?->notifications()->where('id', $id)->first();
-        if ($notification) {
+        if ($notification && (!$subUser || $subUser->canSeeNotificationType($notification->data['type'] ?? null))) {
             $notification->markAsRead();
         }
         return response()->json(['message' => 'done']);
@@ -199,22 +216,35 @@ class NotificationController extends Controller
 
     public function markAllAsRead(Request $request): JsonResponse
     {
-        $user = $request->user();
-        if ($user instanceof SubUser) {
-            $user = $user->client;
+        $authUser = $request->user();
+        $subUser = $authUser instanceof SubUser ? $authUser : null;
+        $user = $subUser ? $subUser->client : $authUser;
+
+        if ($subUser) {
+            // ن2 — only mark read the notifications this sub-user is actually
+            // allowed to see; a blanket update(['read_at' => now()]) here
+            // would silently clear the parent client's unread payments/
+            // contracts/approvals notifications too, on behalf of a sub-user
+            // who was never shown them in the first place.
+            foreach ($user?->unreadNotifications ?? collect() as $notification) {
+                if ($subUser->canSeeNotificationType($notification->data['type'] ?? null)) {
+                    $notification->markAsRead();
+                }
+            }
+        } else {
+            $user?->unreadNotifications()->update(['read_at' => now()]);
         }
-        $user?->unreadNotifications()->update(['read_at' => now()]);
+
         return response()->json(['message' => 'done']);
     }
 
     public function destroy(Request $request, string $id): JsonResponse
     {
-        $user = $request->user();
-        if ($user instanceof SubUser) {
-            $user = $user->client;
-        }
+        $authUser = $request->user();
+        $subUser = $authUser instanceof SubUser ? $authUser : null;
+        $user = $subUser ? $subUser->client : $authUser;
         $notification = $user?->notifications()->where('id', $id)->first();
-        if ($notification) {
+        if ($notification && (!$subUser || $subUser->canSeeNotificationType($notification->data['type'] ?? null))) {
             $notification->delete();
         }
         return response()->json(['message' => 'done']);

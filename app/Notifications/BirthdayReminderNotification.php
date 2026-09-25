@@ -22,6 +22,11 @@ class BirthdayReminderNotification extends BaseNotification
             'title' => 'تذكير: عيد ميلاد العميل',
             'body' => "غداً عيد ميلاد العميل {$this->client->contact_person}",
             'client_id' => $this->client->id,
+            // plans/notifications-badges-toasts-plan.md ن3 — same reasoning
+            // as MeetingReminderNotification. GET /notifications' manager
+            // filter also has a client_id fallback now, which covers
+            // already-stored rows from before this field existed.
+            'workspace_id' => $this->client->workspace?->id,
         ];
     }
 
