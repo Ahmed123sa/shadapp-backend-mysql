@@ -132,8 +132,20 @@ class ChatController extends Controller
             $recipient = null;
         }
         if ($recipient) {
+            // plans/notifications-badges-toasts-plan.md ن16 (§3 س1) — don't
+            // push again if the recipient already has an unread chat
+            // notification for this workspace from the last 5 minutes (the
+            // database row and the realtime broadcast still happen below via
+            // notify(); only the FCM channel gets skipped inside the
+            // notification's own via()).
+            $skipPush = $recipient->notifications()
+                ->where('data->type', 'chat')
+                ->where('data->workspace_id', $workspace->id)
+                ->whereNull('read_at')
+                ->where('created_at', '>=', now()->subMinutes(5))
+                ->exists();
             try {
-                $recipient->notify(new ChatMessageSentNotification($message));
+                $recipient->notify(new ChatMessageSentNotification($message, $skipPush));
             } catch (\Exception $e) {
                 Log::warning('Chat notification failed: ' . $e->getMessage());
             }
@@ -242,10 +254,41 @@ class ChatController extends Controller
     public function markAsRead(Workspace $workspace, Request $request): JsonResponse
     {
         $user = $request->user();
-        $senderType = get_class($user);
 
-        $workspace->chatMessages()
-            ->where('sender_type', '!=', $senderType)
+        // plans/notifications-badges-toasts-plan.md ن7 (§3 س5) — this used to
+        // compare `sender_type != get_class($user)`. When a sub-user (class
+        // SubUser) opened the chat, that marked the PRIMARY CLIENT's own
+        // messages as read too (Client::class != SubUser::class), even
+        // though the sub-user reading something has nothing to do with
+        // whether the client's own outgoing messages are "read". There's no
+        // per-user read table (the real fix — see the plan), so the
+        // workaround treats Client and SubUser as one "client side": a
+        // client-side reader marks staff (User) messages read, and a staff
+        // reader marks client-side (Client or SubUser) messages read —
+        // whichever one of them actually opened the chat.
+        $isClientSide = $user instanceof \App\Models\Client || $user instanceof \App\Models\SubUser;
+
+        $query = $workspace->chatMessages()->whereNull('read_at');
+        if ($isClientSide) {
+            $query->where('sender_type', \App\Models\User::class);
+        } else {
+            $query->whereIn('sender_type', [\App\Models\Client::class, \App\Models\SubUser::class]);
+        }
+        $query->update(['read_at' => now()]);
+
+        // ن16 (§3 س1) — mark this workspace's chat notifications read too,
+        // so the bell's unread count actually reflects that the chat was
+        // just read instead of waiting for the next poll to still count 30
+        // one-per-message notifications. Chat notifications are always
+        // created against the recipient side's "owner" record (the client
+        // for a staff-sent message, the assigned manager for a client/
+        // sub-user-sent one — see ChatController::store()), never against a
+        // sub-user directly, so a sub-user's own read here clears the
+        // parent client's notifications.
+        $notifiable = $isClientSide ? $workspace->client : $user;
+        $notifiable?->notifications()
+            ->where('data->type', 'chat')
+            ->where('data->workspace_id', $workspace->id)
             ->whereNull('read_at')
             ->update(['read_at' => now()]);
 

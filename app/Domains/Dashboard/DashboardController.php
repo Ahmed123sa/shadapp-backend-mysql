@@ -9,6 +9,7 @@ use App\Models\Contract;
 use App\Models\FileEntry;
 use App\Models\Payment;
 use App\Models\SubUser;
+use App\Models\User;
 use App\Models\Workspace;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -138,8 +139,16 @@ class DashboardController extends Controller
 
         $wsId = $ws->id;
 
+        // plans/notifications-badges-toasts-plan.md ن7 — this used to be
+        // `sender_type != Client::class`, which only excludes the primary
+        // client's own messages. A sub-user's own sent messages (sender_type
+        // = SubUser::class) still matched "!= Client::class", so this
+        // counted a sub-user's own outgoing messages as unread — both for
+        // the client's badge and for that same sub-user's own badge. The
+        // client and its sub-users are treated as one "client side" here
+        // (§3 س5); the only real "other side" is staff (User).
         $chat = ChatMessage::where('workspace_id', $wsId)
-            ->where('sender_type', '!=', Client::class)
+            ->where('sender_type', User::class)
             ->whereNull('read_at')
             ->count();
 
