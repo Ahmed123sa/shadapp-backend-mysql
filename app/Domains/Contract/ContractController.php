@@ -326,17 +326,38 @@ class ContractController extends Controller
 
         $status = $request->action === 'edit_requested' ? 'edit_requested' : 'client_approved';
 
-        // A sub-user acts on behalf of its parent client company and has no
-        // signature of its own — sub_users has no signature_data column, so
-        // $signer->signature_data would silently evaluate to null (Eloquent
-        // doesn't raise on a missing attribute). The signature that belongs
-        // on the contract is always the company's, so reach through to the
-        // parent client when the signer is a sub-user. Same pattern already
-        // used correctly in ApprovalController::respond().
+        // This endpoint is reachable by a Client, a SubUser, or a User
+        // (staff) proxying the client's approval — e.g. an AM entering it
+        // after getting verbal sign-off over the phone; see
+        // RealWorldScenarioTest's client-action steps, which call this as
+        // the AM, not the client. Whoever calls it, the signature that
+        // belongs on the contract is always the client's own: a sub-user has
+        // none of its own (sub_users has no signature_data column, so
+        // $signer->signature_data would silently evaluate to null — Eloquent
+        // doesn't raise on a missing attribute), and staff's own saved
+        // signature (used for company_signature_data elsewhere) is not the
+        // client's. Same pattern used in ChatController::respond().
         $signer = $request->user();
-        $signature = $signer instanceof \App\Models\SubUser
-            ? $signer->client?->signature_data
-            : $signer->signature_data;
+        $signature = match (true) {
+            $signer instanceof \App\Models\SubUser => $signer->client?->signature_data,
+            $signer instanceof \App\Models\Client => $signer->signature_data,
+            default => $contract->workspace->client?->signature_data,
+        };
+
+        // client-signature-plan.md ن2 — this used to accept 'approved' with
+        // no saved signature at all, silently closing the contract with
+        // client_signature_data left null. The web dashboard happens to
+        // block the client from reaching this screen without a signature
+        // first, but the mobile app doesn't (see ن3), so this was reachable
+        // in practice. 'edit_requested' never needed a signature and still
+        // doesn't. This check sits after the workspace-access check above so
+        // an unauthorized caller still gets 403, not 422.
+        if ($request->action === 'approved' && empty($signature)) {
+            return response()->json([
+                'message' => 'لازم تحفظ توقيعك الأول قبل ما توافق على العقد.',
+                'code' => 'signature_required',
+            ], 422);
+        }
 
         $contract->update([
             'status' => $status,

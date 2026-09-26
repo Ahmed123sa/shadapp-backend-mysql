@@ -680,6 +680,7 @@ class SubUserTest extends TestCase
     public function test_a_sub_user_approving_a_contract_logs_the_owning_client_not_the_sub_users_id(): void
     {
         [$client, $workspace] = $this->makeClient();
+        $client->update(['signature_data' => 'data:image/png;base64,iVBORw0KGgo=']);
         $subUser = SubUser::factory()->create([
             'client_id' => $client->id,
             'permissions' => ['can_approve_contracts' => true],
@@ -706,6 +707,7 @@ class SubUserTest extends TestCase
     public function test_a_client_approving_a_contract_logs_acted_by_client(): void
     {
         [$client, $workspace] = $this->makeClient();
+        $client->update(['signature_data' => 'data:image/png;base64,iVBORw0KGgo=']);
         $contract = \App\Models\Contract::factory()->create([
             'workspace_id' => $workspace->id,
             'status' => 'sent',

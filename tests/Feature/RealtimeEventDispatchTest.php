@@ -95,6 +95,7 @@ class RealtimeEventDispatchTest extends TestCase
     {
         Event::fake([ContractStatusChanged::class]);
         [$manager, $client, $workspace] = $this->makeWorkspace();
+        $client->update(['signature_data' => 'توقيع تجريبي']);
         $contract = Contract::factory()->create(['workspace_id' => $workspace->id, 'created_by' => $manager->id, 'status' => 'sent']);
 
         $token = $client->createToken('test')->plainTextToken;

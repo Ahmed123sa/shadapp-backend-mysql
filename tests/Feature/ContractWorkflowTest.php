@@ -53,6 +53,8 @@ class ContractWorkflowTest extends TestCase
 
     public function test_client_can_approve_contract(): void
     {
+        $this->client->update(['signature_data' => 'توقيع تجريبي']);
+
         $response = $this->actingAs($this->manager)->postJson("/api/workspaces/{$this->workspace->id}/contracts", [
             'title' => 'Approvable Contract',
         ]);
@@ -68,6 +70,92 @@ class ContractWorkflowTest extends TestCase
         $response->assertOk();
         $this->assertEquals('client_approved', Contract::find($contractId)->status);
         $this->assertNotNull(Contract::find($contractId)->client_signed_at);
+    }
+
+    // client-signature-plan.md ن2 — approving used to silently succeed with
+    // no saved signature at all, leaving client_signature_data null on a
+    // contract marked client_approved.
+    public function test_client_cannot_approve_a_contract_without_a_saved_signature(): void
+    {
+        $this->assertNull($this->client->signature_data);
+
+        $response = $this->actingAs($this->manager)->postJson("/api/workspaces/{$this->workspace->id}/contracts", [
+            'title' => 'No Signature Contract',
+        ]);
+        $contractId = $response->json('contract.id');
+        $this->actingAs($this->manager)->postJson("/api/contracts/{$contractId}/send");
+
+        $token = $this->client->createToken('test')->plainTextToken;
+        $this->resetAuth();
+        $this->defaultHeaders = [];
+        $response = $this->withHeaders(['Authorization' => 'Bearer ' . $token])
+            ->postJson("/api/contracts/{$contractId}/client-action", ['action' => 'approved']);
+
+        $response->assertStatus(422)->assertJson(['code' => 'signature_required']);
+        $this->assertEquals('sent', Contract::find($contractId)->status);
+        $this->assertNull(Contract::find($contractId)->client_signed_at);
+    }
+
+    // client-signature-plan.md ن2 — this endpoint is also reachable by staff
+    // proxying the client's approval (e.g. the AM entering it after verbal
+    // sign-off over the phone) — see RealWorldScenarioTest, which calls this
+    // endpoint as the AM, not the client, in its real-world simulation.
+    // Staff's own saved signature (used for company_signature_data
+    // elsewhere) is irrelevant here — the one that belongs on the contract
+    // is the client's own.
+    public function test_a_manager_can_approve_a_contract_on_the_clients_behalf_when_the_client_has_a_saved_signature(): void
+    {
+        $this->client->update(['signature_data' => 'توقيع تجريبي']);
+
+        $response = $this->actingAs($this->manager)->postJson("/api/workspaces/{$this->workspace->id}/contracts", [
+            'title' => 'Proxied Approval Contract',
+        ]);
+        $contractId = $response->json('contract.id');
+        $this->actingAs($this->manager)->postJson("/api/contracts/{$contractId}/send");
+
+        $response = $this->actingAs($this->manager)->postJson("/api/contracts/{$contractId}/client-action", ['action' => 'approved']);
+
+        $response->assertOk();
+        $this->assertEquals('client_approved', Contract::find($contractId)->status);
+        $this->assertEquals('توقيع تجريبي', Contract::find($contractId)->client_signature_data);
+    }
+
+    public function test_a_manager_cannot_approve_a_contract_on_the_clients_behalf_without_the_clients_saved_signature(): void
+    {
+        $this->assertNull($this->client->signature_data);
+
+        $response = $this->actingAs($this->manager)->postJson("/api/workspaces/{$this->workspace->id}/contracts", [
+            'title' => 'Proxied No Signature Contract',
+        ]);
+        $contractId = $response->json('contract.id');
+        $this->actingAs($this->manager)->postJson("/api/contracts/{$contractId}/send");
+
+        $response = $this->actingAs($this->manager)->postJson("/api/contracts/{$contractId}/client-action", ['action' => 'approved']);
+
+        $response->assertStatus(422)->assertJson(['code' => 'signature_required']);
+        $this->assertEquals('sent', Contract::find($contractId)->status);
+    }
+
+    // edit_requested never carried a client signature onto the contract and
+    // shouldn't require one — only 'approved' does.
+    public function test_client_can_request_edits_without_a_saved_signature(): void
+    {
+        $this->assertNull($this->client->signature_data);
+
+        $response = $this->actingAs($this->manager)->postJson("/api/workspaces/{$this->workspace->id}/contracts", [
+            'title' => 'No Signature Edit Request',
+        ]);
+        $contractId = $response->json('contract.id');
+        $this->actingAs($this->manager)->postJson("/api/contracts/{$contractId}/send");
+
+        $token = $this->client->createToken('test')->plainTextToken;
+        $this->resetAuth();
+        $this->defaultHeaders = [];
+        $response = $this->withHeaders(['Authorization' => 'Bearer ' . $token])
+            ->postJson("/api/contracts/{$contractId}/client-action", ['action' => 'edit_requested']);
+
+        $response->assertOk();
+        $this->assertEquals('edit_requested', Contract::find($contractId)->status);
     }
 
     public function test_client_can_request_edits(): void
@@ -104,6 +192,8 @@ class ContractWorkflowTest extends TestCase
 
     public function test_company_can_approve_contract(): void
     {
+        $this->client->update(['signature_data' => 'توقيع تجريبي']);
+
         $response = $this->actingAs($this->manager)->postJson("/api/workspaces/{$this->workspace->id}/contracts", [
             'title' => 'Company Approve',
         ]);
