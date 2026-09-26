@@ -124,28 +124,28 @@ class DashboardController extends Controller
 
         $awaitingYouContracts = (clone DashboardScope::contracts($isAm, $user, $filters))
             ->where('status', 'client_approved')
-            ->with('workspace.client:id,uuid,company_name')
+            ->with('workspace.client:id,uuid,company_name,client_type')
             ->oldest('updated_at')
             ->limit($limit)
             ->get(['id', 'workspace_id', 'title', 'value', 'currency', 'status', 'updated_at']);
 
         $awaitingYouPayments = (clone DashboardScope::payments($isAm, $user, $filters))
             ->where('status', 'pending')
-            ->with('client:id,uuid,company_name')
+            ->with('client:id,uuid,company_name,client_type')
             ->oldest('created_at')
             ->limit($limit)
             ->get(['id', 'workspace_id', 'client_id', 'amount', 'currency', 'status', 'created_at']);
 
         $awaitingClientContracts = (clone DashboardScope::contracts($isAm, $user, $filters))
             ->where('status', 'sent')
-            ->with('workspace.client:id,uuid,company_name')
+            ->with('workspace.client:id,uuid,company_name,client_type')
             ->oldest('updated_at')
             ->limit($limit)
             ->get(['id', 'workspace_id', 'title', 'value', 'currency', 'status', 'updated_at']);
 
         $awaitingClientApprovals = (clone DashboardScope::approvals($isAm, $user, $filters))
             ->where('status', 'pending')
-            ->with('workspace.client:id,uuid,company_name')
+            ->with('workspace.client:id,uuid,company_name,client_type')
             ->oldest('created_at')
             ->limit($limit)
             ->get(['id', 'workspace_id', 'title', 'status', 'created_at']);
@@ -163,14 +163,28 @@ class DashboardController extends Controller
         ]);
     }
 
-    /** @return array{id: int, uuid: string, company_name: ?string}|null */
+    /**
+     * client_type added (26 Sept 2026, pending-approvals-plan.md ك5) so the
+     * mobile app's approvals queue can render the same business/individual
+     * badge it already shows for every other client-linked list item, once
+     * it migrates off its own per-client fetch loop onto this endpoint.
+     * Purely additive to the response shape — nothing existing reads this
+     * key, so no other caller is affected.
+     *
+     * @return array{id: int, uuid: string, company_name: ?string, client_type: ?string}|null
+     */
     private function clientSummary(?Client $client): ?array
     {
         if (!$client) {
             return null;
         }
 
-        return ['id' => $client->id, 'uuid' => $client->uuid, 'company_name' => $client->company_name];
+        return [
+            'id' => $client->id,
+            'uuid' => $client->uuid,
+            'company_name' => $client->company_name,
+            'client_type' => $client->client_type,
+        ];
     }
 
     private function mapContractItem(Contract $contract): array

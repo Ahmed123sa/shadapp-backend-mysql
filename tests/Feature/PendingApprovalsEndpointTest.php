@@ -200,6 +200,24 @@ class PendingApprovalsEndpointTest extends TestCase
         $this->assertSame($client->company_name, $response->json('awaiting_client.contracts.0.client.company_name'));
     }
 
+    // pending-approvals-plan.md ك5 — the mobile approvals queue renders a
+    // business/individual badge for every client-linked item; client_type
+    // must travel with the client summary or that badge silently disappears
+    // once mobile migrates onto this endpoint.
+    public function test_each_item_includes_the_clients_type_for_the_mobile_badge(): void
+    {
+        $manager = User::factory()->create(['role' => User::ROLE_ACCOUNT_MANAGER]);
+        $client = $this->clientFor($manager);
+        $client->update(['client_type' => 'individual']);
+        $workspace = $this->workspaceFor($client, $manager);
+
+        Contract::factory()->create(['workspace_id' => $workspace->id, 'status' => 'sent']);
+
+        $response = $this->actingAs($manager)->getJson('/api/dashboard/pending-approvals')->assertOk();
+
+        $this->assertSame('individual', $response->json('awaiting_client.contracts.0.client.client_type'));
+    }
+
     // 403/401 refusals for client/sub-user/unauthenticated tokens are
     // covered by StaffOnlyRouteTest's staffOnlyRoutes() data provider,
     // which this route was added to.
