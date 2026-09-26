@@ -107,6 +107,11 @@ class ClientController extends Controller
         $this->authorize('view', $client);
 
         $client->load('workspace.contracts', 'workspace.payments', 'subUsers', 'payments');
+        // Same has_signed_contract definition as index() (23 Sept 2026 fix,
+        // see the comment there) — the client detail page's "signed" badge
+        // used to read signed_at directly, which only records a profile
+        // signature, not contract approval. See client-signature-plan.md ن1.
+        $client->loadExists(['contracts as has_signed_contract' => fn ($q) => $q->whereIn('contracts.status', Client::SIGNED_CONTRACT_STATUSES)]);
 
         return response()->json(['client' => $client]);
     }

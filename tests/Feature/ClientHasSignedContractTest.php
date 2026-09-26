@@ -72,4 +72,38 @@ class ClientHasSignedContractTest extends TestCase
 
         $this->assertFalse($this->flag());
     }
+
+    // ---------------------------------------------------------------
+    // GET /clients/{id} — client-signature-plan.md ن1. Same flag, but the
+    // client detail page's badge reads this endpoint, not the list one, so
+    // it needs its own has_signed_contract independently of index()'s.
+    // ---------------------------------------------------------------
+
+    private function showFlag(): mixed
+    {
+        return $this->actingAs($this->manager)
+            ->getJson("/api/clients/{$this->client->id}")
+            ->assertOk()
+            ->json('client.has_signed_contract');
+    }
+
+    public function test_show_reports_not_contracted_with_no_contracts(): void
+    {
+        $this->assertFalse($this->showFlag());
+    }
+
+    public function test_show_reports_contracted_for_an_approved_contract_without_a_saved_signature(): void
+    {
+        Contract::factory()->create(['workspace_id' => $this->workspace->id, 'status' => 'completed']);
+
+        $this->assertNull($this->client->fresh()->signed_at);
+        $this->assertTrue($this->showFlag());
+    }
+
+    public function test_show_reports_not_contracted_for_a_sent_contract(): void
+    {
+        Contract::factory()->create(['workspace_id' => $this->workspace->id, 'status' => 'sent']);
+
+        $this->assertFalse($this->showFlag());
+    }
 }
