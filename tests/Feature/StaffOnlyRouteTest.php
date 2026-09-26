@@ -46,6 +46,9 @@ class StaffOnlyRouteTest extends TestCase
             // 24 Sept 2026 — same isAccountManager()-based scoping as
             // /reports (DashboardController::stats(), server-side-stats-plan.md).
             'dashboard stats' => ['/api/dashboard/stats'],
+            // 26 Sept 2026 — same isAccountManager()-based scoping
+            // (DashboardController::pendingApprovals(), pending-approvals-plan.md ك1).
+            'pending approvals' => ['/api/dashboard/pending-approvals'],
         ];
     }
 

@@ -82,6 +82,139 @@ class DashboardController extends Controller
         ]);
     }
 
+    /**
+     * GET /dashboard/pending-approvals (plans/pending-approvals-plan.md ك1).
+     *
+     * The SA/AM home screens' "Pending Approvals" section used to only
+     * list approval-request items, hidden entirely once that one
+     * sub-count hit zero (ن1), and didn't exist at all on the AM home
+     * (ن2) — even though the badge/card right next to it always summed
+     * all three item types via DashboardScope::pendingApprovalsTotal().
+     * Every query below is built from that SAME set of DashboardScope
+     * builders, so this list can never disagree with that count the way
+     * it already had, twice (see that method's docblock).
+     *
+     * Items are split per the plan (ن4): "awaiting_you" is what the
+     * staff member themselves must act on (a contract the client already
+     * approved, now waiting on company approval; a payment proof waiting
+     * for review); "awaiting_client" is blocked on the client instead (a
+     * contract sent to them; an approval request raised to them) —
+     * surfaced for visibility, not because the manager can act on it
+     * directly. `counts` is always the untruncated total (identical to
+     * /badge-counts' approvals number and /dashboard/stats'
+     * approvals.total) even though each list below is capped.
+     */
+    public function pendingApprovals(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $isAm = $user->isAccountManager();
+        $filters = $request->only(['manager_id']);
+
+        // Oldest-first, not newest-first: the longest-waiting item is the
+        // most urgent one, and capping at "most recent N" (the way
+        // /all-contracts does) is exactly bug ن3 — an old 'sent' contract
+        // could silently fall off a recency-capped list while still being
+        // counted in the total. `limit` is a query param (not yet used by
+        // the web UI) so ك5's mobile migration can ask for more than 50
+        // without a second endpoint.
+        $limit = (int) $request->input('limit', 50);
+        if ($limit < 1 || $limit > 200) {
+            $limit = 50;
+        }
+
+        $awaitingYouContracts = (clone DashboardScope::contracts($isAm, $user, $filters))
+            ->where('status', 'client_approved')
+            ->with('workspace.client:id,uuid,company_name')
+            ->oldest('updated_at')
+            ->limit($limit)
+            ->get(['id', 'workspace_id', 'title', 'value', 'currency', 'status', 'updated_at']);
+
+        $awaitingYouPayments = (clone DashboardScope::payments($isAm, $user, $filters))
+            ->where('status', 'pending')
+            ->with('client:id,uuid,company_name')
+            ->oldest('created_at')
+            ->limit($limit)
+            ->get(['id', 'workspace_id', 'client_id', 'amount', 'currency', 'status', 'created_at']);
+
+        $awaitingClientContracts = (clone DashboardScope::contracts($isAm, $user, $filters))
+            ->where('status', 'sent')
+            ->with('workspace.client:id,uuid,company_name')
+            ->oldest('updated_at')
+            ->limit($limit)
+            ->get(['id', 'workspace_id', 'title', 'value', 'currency', 'status', 'updated_at']);
+
+        $awaitingClientApprovals = (clone DashboardScope::approvals($isAm, $user, $filters))
+            ->where('status', 'pending')
+            ->with('workspace.client:id,uuid,company_name')
+            ->oldest('created_at')
+            ->limit($limit)
+            ->get(['id', 'workspace_id', 'title', 'status', 'created_at']);
+
+        return response()->json([
+            'awaiting_you' => [
+                'contracts' => $awaitingYouContracts->map(fn (Contract $c) => $this->mapContractItem($c))->values(),
+                'payments' => $awaitingYouPayments->map(fn (Payment $p) => $this->mapPaymentItem($p))->values(),
+            ],
+            'awaiting_client' => [
+                'contracts' => $awaitingClientContracts->map(fn (Contract $c) => $this->mapContractItem($c))->values(),
+                'approvals' => $awaitingClientApprovals->map(fn (Approval $a) => $this->mapApprovalItem($a))->values(),
+            ],
+            'counts' => DashboardScope::pendingApprovalsTotal($isAm, $user, $filters),
+        ]);
+    }
+
+    /** @return array{id: int, uuid: string, company_name: ?string}|null */
+    private function clientSummary(?Client $client): ?array
+    {
+        if (!$client) {
+            return null;
+        }
+
+        return ['id' => $client->id, 'uuid' => $client->uuid, 'company_name' => $client->company_name];
+    }
+
+    private function mapContractItem(Contract $contract): array
+    {
+        return [
+            'id' => $contract->id,
+            'type' => 'contract',
+            'title' => $contract->title,
+            'value' => $contract->value,
+            'currency' => $contract->currency,
+            'status' => $contract->status,
+            'workspace_id' => $contract->workspace_id,
+            'updated_at' => $contract->updated_at,
+            'client' => $this->clientSummary($contract->workspace?->client),
+        ];
+    }
+
+    private function mapPaymentItem(Payment $payment): array
+    {
+        return [
+            'id' => $payment->id,
+            'type' => 'payment',
+            'amount' => $payment->amount,
+            'currency' => $payment->currency,
+            'status' => $payment->status,
+            'workspace_id' => $payment->workspace_id,
+            'created_at' => $payment->created_at,
+            'client' => $this->clientSummary($payment->client),
+        ];
+    }
+
+    private function mapApprovalItem(Approval $approval): array
+    {
+        return [
+            'id' => $approval->id,
+            'type' => 'approval',
+            'title' => $approval->title,
+            'status' => $approval->status,
+            'workspace_id' => $approval->workspace_id,
+            'created_at' => $approval->created_at,
+            'client' => $this->clientSummary($approval->workspace?->client),
+        ];
+    }
+
     public function badgeCounts(Request $request): JsonResponse
     {
         $user = $request->user();

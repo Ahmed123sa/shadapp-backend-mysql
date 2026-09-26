@@ -233,6 +233,10 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     // directly, which a client/sub-user token doesn't have.
     Route::get('/dashboard/stats', [DashboardController::class, 'stats'])->middleware('staff.only');
 
+    // The list behind that same approvals card/badge
+    // (pending-approvals-plan.md ك1) — same gate, same reason.
+    Route::get('/dashboard/pending-approvals', [DashboardController::class, 'pendingApprovals'])->middleware('staff.only');
+
     // Failed sign-ins. Separate from /audit-logs because they are a
     // separate table for a reason — see the create_login_attempts_table
     // migration. staff.only for the same reason as the two above; the
