@@ -543,6 +543,7 @@ class SubUserTest extends TestCase
     public function test_a_sub_user_can_respond_to_a_chat_message_with_the_permission(): void
     {
         [$client, $workspace, $manager] = $this->makeClient();
+        $client->update(['signature_data' => 'data:image/png;base64,iVBORw0KGgo=']);
         $subUser = SubUser::factory()->create([
             'client_id' => $client->id,
             'permissions' => ['can_respond_approvals' => true],

@@ -190,7 +190,33 @@ class ChatController extends Controller
 
         $user = $request->user();
         abort_unless($chatMessage->workspace->canBeAccessedBy($user), 403, 'غير مصرح لك بالوصول إلى مساحة العمل هذه');
-        $signature = $user instanceof \App\Models\Client ? $user->signature_data : null;
+
+        // This endpoint is reachable by a Client, a SubUser, or a User
+        // (staff) proxying the client's response — same three principals as
+        // ContractController::clientAction(), which RealWorldScenarioTest
+        // exercises with the AM calling client-action directly (a real,
+        // tested proxy flow, not a hypothetical one). Whoever calls it, the
+        // signature that belongs on the approval is always the client's own:
+        // a sub-user has none of its own (sub_users has no signature_data
+        // column, so $user->signature_data would silently evaluate to null —
+        // Eloquent doesn't raise on a missing attribute), and staff's own
+        // saved signature is not the client's. See client-signature-plan.md ن5.
+        $signature = match (true) {
+            $user instanceof \App\Models\SubUser => $user->client?->signature_data,
+            $user instanceof \App\Models\Client => $user->signature_data,
+            default => $chatMessage->workspace->client?->signature_data,
+        };
+
+        // client-signature-plan.md ن2/ن5 — same rule as
+        // ContractController::clientAction(): approving with no saved
+        // signature used to succeed silently, leaving the approval's
+        // signature (and its PDF certificate) blank.
+        if ($request->action === 'approved' && empty($signature)) {
+            return response()->json([
+                'message' => 'لازم تحفظ توقيعك الأول قبل ما توافق.',
+                'code' => 'signature_required',
+            ], 422);
+        }
 
         $chatMessage->update([
             'action_taken' => true,
