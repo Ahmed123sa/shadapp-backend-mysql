@@ -263,6 +263,21 @@ against a real MySQL database for that.
 - [ ] `FCM_SERVER_KEY` set if push notifications are wanted
 - [ ] `ZOOM_*` credentials set if meeting integration is wanted
 
+### After every deploy (code already on the server, not just first-time setup)
+
+```bash
+php artisan migrate --force
+php artisan config:cache && php artisan route:cache
+php artisan queue:restart
+```
+
+`queue:restart` matters as much as the migration: the queue worker keeps the
+old code loaded in memory until it is told to restart, so **any fix that
+touches queued work — every notification (`BaseNotification` is
+`ShouldQueue`), every email — will silently keep running the pre-deploy
+behavior** until this runs. Nothing errors when this step is skipped; the
+old code just keeps executing.
+
 ---
 
 ## Layout

@@ -61,9 +61,14 @@ echo "✓ Both programs running."
 
 echo ""
 echo "=== 4. Cron for schedule:run ==="
+# -u "$APP_USER" matters here: this script is normally run with sudo, so a
+# plain `crontab -` would register the cron entry under root instead of the
+# deploy user. schedule:run would then run as root, writing storage/logs
+# files owned by root — and the app gets a 500 the next time a non-root
+# process (queue worker, web request) tries to write to that same log file.
 CRON_JOB="* * * * * cd $PROJECT_DIR && php artisan schedule:run >> /dev/null 2>&1"
-(crontab -l 2>/dev/null | grep -v "artisan schedule:run"; echo "$CRON_JOB") | crontab -
-echo "✓ Cron entry added."
+(crontab -u "$APP_USER" -l 2>/dev/null | grep -v "artisan schedule:run"; echo "$CRON_JOB") | crontab -u "$APP_USER" -
+echo "✓ Cron entry added for user: $APP_USER"
 
 echo ""
 echo "Done. Verify with:  sudo supervisorctl status"
