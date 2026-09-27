@@ -32,5 +32,8 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="REVERB_APP_ID" value="shadapp-id"/>
+        <env name="REVERB_APP_KEY" value="shadapp-key"/>
+        <env name="REVERB_APP_SECRET" value="shadapp-secret"/>
     </php>
 </phpunit>

@@ -17,6 +17,7 @@ class AuthAny
         foreach ($guards as $guard) {
             if (Auth::guard($guard)->check()) {
                 Auth::shouldUse($guard);
+                $request->setUserResolver(fn ($g = null) => Auth::guard($g ?? $guard)->user());
                 return $next($request);
             }
         }
