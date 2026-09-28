@@ -245,8 +245,17 @@ class ContractController extends Controller
 
     public function update(UpdateContractRequest $request, Contract $contract): JsonResponse
     {
+        if (! in_array($contract->status, ['draft', 'edit_requested'], true)) {
+            return response()->json([
+                'message' => 'مينفعش تعدل العقد في الحالة دي. التعديل متاح وهو مسودة أو لما العميل يطلب تعديل بس.',
+                'code' => 'contract_not_editable',
+            ], 422);
+        }
 
-        $contract->update($request->only(['title', 'value', 'currency', 'start_date', 'end_date', 'contract_type']));
+        $contract->update(array_merge(
+            $request->only(['title', 'value', 'currency', 'start_date', 'end_date', 'contract_type']),
+            ['pdf_url' => null],
+        ));
 
         if ($request->has('clauses')) {
             $contract->clauses()->delete();
@@ -260,13 +269,23 @@ class ContractController extends Controller
         }
 
         if ($request->has('required_documents')) {
-            $contract->requiredDocuments()->delete();
-            foreach ($request->required_documents as $i => $doc) {
-                $contract->requiredDocuments()->create([
-                    'name' => $doc['name'],
-                    'is_required' => true,
-                    'sort_order' => $i,
-                ]);
+            $names = collect($request->required_documents ?? [])
+                ->pluck('name')->map(fn ($n) => trim((string) $n))->filter()->values();
+
+            // امسح بس المستندات اللي اتشالت من الليستة
+            $contract->requiredDocuments()->whereNotIn('name', $names->all())->delete();
+
+            $existing = $contract->requiredDocuments()->get()->keyBy('name');
+            foreach ($names as $i => $name) {
+                if ($doc = $existing->get($name)) {
+                    $doc->update(['sort_order' => $i]);
+                } else {
+                    $contract->requiredDocuments()->create([
+                        'name' => $name,
+                        'is_required' => true,
+                        'sort_order' => $i,
+                    ]);
+                }
             }
         }
 
