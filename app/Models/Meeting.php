@@ -3,13 +3,17 @@
 namespace App\Models;
 
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Facades\Cache;
 
 class Meeting extends Model
 {
     use HasFactory;
+
+    protected $appends = ['host_user_id'];
 
     protected $fillable = [
         'workspace_id', 'contract_id', 'approval_id', 'title', 'zoom_meeting_id', 'link', 'passcode',
@@ -160,5 +164,29 @@ class Meeting extends Model
     public function approval(): BelongsTo
     {
         return $this->belongsTo(Approval::class);
+    }
+
+    public function hostCacheKey(): string
+    {
+        return "meeting:{$this->id}:host";
+    }
+
+    /** The user who started this Zoom meeting as host, if anyone has. */
+    public function currentHostUserId(): ?int
+    {
+        $id = Cache::get($this->hostCacheKey());
+        return $id !== null ? (int) $id : null;
+    }
+
+    /** Until when a host claim on this meeting is held. */
+    public function hostClaimExpiresAt(): \Carbon\CarbonInterface
+    {
+        $end = $this->scheduled_at?->copy()->addMinutes($this->duration_minutes ?? 60)->addHours(2);
+        return ($end && $end->isFuture() && $end->gt(now()->addHours(2))) ? $end : now()->addHours(2);
+    }
+
+    protected function hostUserId(): Attribute
+    {
+        return Attribute::get(fn () => $this->currentHostUserId());
     }
 }

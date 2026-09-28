@@ -6,6 +6,7 @@ use App\Models\Meeting;
 use App\Services\ZoomService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class ZoomWebhookController extends Controller
@@ -59,6 +60,8 @@ class ZoomWebhookController extends Controller
 
         $meeting = Meeting::where('zoom_meeting_id', $zoomMeetingId)->first();
         if (!$meeting || $meeting->status !== 'scheduled') return;
+
+        Cache::forget($meeting->hostCacheKey());
 
         $meeting->update([
             'status' => 'completed',

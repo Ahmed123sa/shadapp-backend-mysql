@@ -47,4 +47,13 @@ class MeetingPolicy
         if ($user instanceof \App\Models\Client) return false;
         return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $meeting->workspace->manager_id === $user->id);
     }
+
+    // The workspace's own account manager or the super admin may start the
+    // Zoom meeting. Only the first of them becomes host — see
+    // MeetingController::enter().
+    public function host($user, Meeting $meeting): bool
+    {
+        return $user instanceof \App\Models\User
+            && ($user->isSuperAdmin() || $meeting->workspace->manager_id === $user->id);
+    }
 }

@@ -132,11 +132,6 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     // signatures). Deactivate/activate below is the replacement.
     Route::post('/account-managers/{manager}/deactivate', [AccountManagerController::class, 'deactivate']);
     Route::post('/account-managers/{manager}/activate', [AccountManagerController::class, 'activate']);
-    // No delete route: an account manager is never deleted — see
-    // AccountManagerController for the reasoning (deleting a manager used
-    // to cascade-delete every one of their clients, contracts, payments and
-    // signatures). A deactivate/reactivate pair belongs here once that
-    // work lands; until then this is a deliberate gap, not an oversight.
 
     // Clients
     Route::get('/clients', [ClientController::class, 'index']);
@@ -193,6 +188,7 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     // Meetings
     Route::post('/workspaces/{workspace}/meetings', [MeetingController::class, 'store']);
     Route::put('/workspaces/{workspace}/meetings/{meeting}', [MeetingController::class, 'update']);
+    Route::post('/meetings/{meeting}/enter', [MeetingController::class, 'enter']);
     Route::patch('/meetings/{meeting}/complete', [MeetingController::class, 'complete']);
     Route::patch('/meetings/{meeting}/cancel', [MeetingController::class, 'cancel']);
     Route::delete('/workspaces/{workspace}/meetings/{meeting}', [MeetingController::class, 'destroy']);

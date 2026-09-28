@@ -11,6 +11,7 @@ use App\Http\Requests\StoreMeetingRequest;
 use App\Services\ZoomService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\Controller;
 
 class MeetingController extends Controller
@@ -110,6 +111,10 @@ class MeetingController extends Controller
 
         $meeting->update($request->only(['title', 'scheduled_at', 'duration_minutes', 'notes', 'status']));
 
+        if ($request->has('scheduled_at')) {
+            Cache::forget($meeting->hostCacheKey());
+        }
+
         if ($meeting->zoom_meeting_id && ZoomService::isConfigured()) {
             try {
                 $zoomData = [];
@@ -146,6 +151,8 @@ class MeetingController extends Controller
     {
         $this->authorize('delete', $meeting);
 
+        Cache::forget($meeting->hostCacheKey());
+
         if ($meeting->zoom_meeting_id && ZoomService::isConfigured()) {
             try {
                 app(ZoomService::class)->deleteMeeting($meeting->zoom_meeting_id);
@@ -166,6 +173,8 @@ class MeetingController extends Controller
             return response()->json(['message' => 'لا يمكن إكمال اجتماع غير مجدول'], 422);
         }
 
+        Cache::forget($meeting->hostCacheKey());
+
         $meeting->update([
             'status' => 'completed',
             'ended_at' => now(),
@@ -182,6 +191,8 @@ class MeetingController extends Controller
             return response()->json(['message' => 'لا يمكن إلغاء اجتماع غير مجدول'], 422);
         }
 
+        Cache::forget($meeting->hostCacheKey());
+
         if ($meeting->zoom_meeting_id && ZoomService::isConfigured()) {
             try {
                 app(ZoomService::class)->deleteMeeting($meeting->zoom_meeting_id);
@@ -193,5 +204,70 @@ class MeetingController extends Controller
         $meeting->update(['status' => 'cancelled']);
 
         return response()->json(['meeting' => $meeting->fresh()]);
+    }
+
+    /**
+     * Staff entry point for a Zoom meeting. The first manager/super admin to
+     * call this becomes the host and gets a fresh start_url; anyone else gets
+     * the participant join_url, so a second "host" can never kick the first.
+     * The host themselves always gets a fresh start_url (to rejoin after a
+     * dropped connection).
+     *
+     * Who is host lives in the cache (Cache::add is atomic on redis/database),
+     * so no schema change is needed. Zoom's own meeting status is checked as a
+     * second guard: if the meeting is already running on Zoom and the caller
+     * isn't the recorded host, they get join_url even if the cache was cleared.
+     *
+     * start_url is fetched on every call and never stored: it embeds a host
+     * token that expires ~2h after issue and grants host control of the
+     * company Zoom account.
+     */
+    public function enter(Request $request, Meeting $meeting): JsonResponse
+    {
+        $this->authorize('host', $meeting);
+
+        if ($meeting->status !== 'scheduled') {
+            return response()->json(['message' => 'الاجتماع لم يعد متاحاً'], 422);
+        }
+        if (!$meeting->zoom_meeting_id || !ZoomService::isConfigured()) {
+            return response()->json(['as' => 'participant', 'url' => $meeting->link]);
+        }
+
+        $userId = $request->user()->id;
+        $key = $meeting->hostCacheKey();
+
+        // Guard 1: atomic claim. Only the first caller wins; the current host
+        // keeps winning (rejoin).
+        $claimedNow = Cache::add($key, $userId, $meeting->hostClaimExpiresAt());
+        $isHost = $claimedNow || (int) Cache::get($key) === $userId;
+
+        if (!$isHost) {
+            return response()->json(['as' => 'participant', 'url' => $meeting->link]);
+        }
+
+        try {
+            $zoomMeeting = app(ZoomService::class)->getMeeting($meeting->zoom_meeting_id);
+        } catch (\Throwable $e) {
+            report($e);
+            if ($claimedNow) Cache::forget($key);   // give the slot back
+            return response()->json(['message' => 'تعذّر الوصول إلى Zoom، حاول مرة أخرى'], 502);
+        }
+
+        // Guard 2: the cache was empty (e.g. cleared) but the meeting is already
+        // running on Zoom under someone else — join as a participant instead of
+        // taking over as host.
+        if ($claimedNow && ($zoomMeeting['status'] ?? null) === 'started') {
+            Cache::forget($key);
+            return response()->json(['as' => 'participant', 'url' => $meeting->link]);
+        }
+
+        $startUrl = $zoomMeeting['start_url'] ?? null;
+        if (!$startUrl) {
+            if ($claimedNow) Cache::forget($key);
+            return response()->json(['message' => 'تعذّر الحصول على رابط بدء الاجتماع'], 502);
+        }
+
+        return response()->json(['as' => 'host', 'url' => $startUrl])
+            ->header('Cache-Control', 'no-store');
     }
 }
