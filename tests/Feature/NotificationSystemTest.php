@@ -33,7 +33,9 @@ use App\Notifications\PaymentReviewedNotification;
 use App\Notifications\PaymentScheduleDeletedNotification;
 use App\Notifications\PaymentScheduleUpdatedNotification;
 use App\Notifications\PaymentScheduledNotification;
+use App\Notifications\SubUserBirthdayGreetingNotification;
 use App\Services\FirebaseService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
@@ -569,5 +571,145 @@ class NotificationSystemTest extends TestCase
 
         $this->assertEquals('payment.approved', $approved['data']['type']);
         $this->assertEquals('payment.rejected', $rejected['data']['type']);
+    }
+
+    public function test_sub_user_can_see_notification_type_returns_false_for_birthday_greeting(): void
+    {
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'permissions' => array_fill_keys(SubUser::PERMISSION_KEYS, true),
+        ]);
+
+        $this->assertFalse($subUser->canSeeNotificationType('birthday_greeting'));
+    }
+
+    public function test_sub_user_does_not_receive_client_birthday_greeting_push(): void
+    {
+        MobileNotificationToken::create([
+            'tokenable_id' => $this->client->id,
+            'tokenable_type' => Client::class,
+            'token' => 'client_fcm_token_1',
+            'device_type' => 'ios',
+        ]);
+
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'permissions' => array_fill_keys(SubUser::PERMISSION_KEYS, true),
+        ]);
+
+        MobileNotificationToken::create([
+            'tokenable_id' => $subUser->id,
+            'tokenable_type' => SubUser::class,
+            'token' => 'subuser_fcm_token_1',
+            'device_type' => 'android',
+        ]);
+
+        $sentTokens = [];
+        $firebaseMock = $this->createMock(FirebaseService::class);
+        $firebaseMock->expects($this->any())
+            ->method('sendMessage')
+            ->willReturnCallback(function ($token) use (&$sentTokens) {
+                $sentTokens[] = $token;
+                return 'projects/test/messages/msg_1';
+            });
+        $this->app->instance(FirebaseService::class, $firebaseMock);
+
+        (new FcmChannel())->send($this->client, new BirthdayGreetingNotification($this->client));
+
+        $this->assertContains('client_fcm_token_1', $sentTokens);
+        $this->assertNotContains('subuser_fcm_token_1', $sentTokens);
+    }
+
+    public function test_sub_user_receives_own_birthday_greeting_push_and_client_does_not(): void
+    {
+        MobileNotificationToken::create([
+            'tokenable_id' => $this->client->id,
+            'tokenable_type' => Client::class,
+            'token' => 'client_fcm_token_2',
+            'device_type' => 'ios',
+        ]);
+
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'name' => 'أحمد',
+        ]);
+
+        MobileNotificationToken::create([
+            'tokenable_id' => $subUser->id,
+            'tokenable_type' => SubUser::class,
+            'token' => 'subuser_fcm_token_2',
+            'device_type' => 'android',
+        ]);
+
+        $sentTokens = [];
+        $firebaseMock = $this->createMock(FirebaseService::class);
+        $firebaseMock->expects($this->any())
+            ->method('sendMessage')
+            ->willReturnCallback(function ($token, $data) use (&$sentTokens) {
+                $sentTokens[] = $token;
+                return 'projects/test/messages/msg_2';
+            });
+        $this->app->instance(FirebaseService::class, $firebaseMock);
+
+        (new FcmChannel())->send($subUser, new SubUserBirthdayGreetingNotification($subUser));
+
+        $this->assertContains('subuser_fcm_token_2', $sentTokens);
+        $this->assertNotContains('client_fcm_token_2', $sentTokens);
+    }
+
+    public function test_send_birthday_reminders_command_sends_greetings_to_sub_users_on_their_birthday(): void
+    {
+        Notification::fake();
+        Carbon::setTestNow('2026-10-05 09:00:00');
+
+        $this->client->update(['status' => 'active']);
+
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'date_of_birth' => '1995-10-05',
+        ]);
+
+        $otherSubUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'date_of_birth' => '1995-03-01',
+        ]);
+
+        $this->artisan('birthdays:send-reminders')->assertSuccessful();
+
+        Notification::assertSentTo($subUser, SubUserBirthdayGreetingNotification::class);
+        Notification::assertNotSentTo($otherSubUser, SubUserBirthdayGreetingNotification::class);
+    }
+
+    public function test_send_birthday_reminders_command_does_not_greet_sub_users_of_inactive_clients(): void
+    {
+        Notification::fake();
+        Carbon::setTestNow('2026-10-05 09:00:00');
+
+        $this->client->update(['status' => 'inactive']);
+
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'date_of_birth' => '1995-10-05',
+        ]);
+
+        $this->artisan('birthdays:send-reminders')->assertSuccessful();
+
+        Notification::assertNotSentTo($subUser, SubUserBirthdayGreetingNotification::class);
+    }
+
+    public function test_sub_user_notifications_index_does_not_include_client_birthday_greeting(): void
+    {
+        $this->client->notify(new BirthdayGreetingNotification($this->client));
+
+        $subUser = SubUser::factory()->create([
+            'client_id' => $this->client->id,
+            'permissions' => array_fill_keys(SubUser::PERMISSION_KEYS, true),
+        ]);
+
+        $response = $this->actingAs($subUser, 'sub_user')->getJson('/api/notifications');
+
+        $response->assertSuccessful();
+        $notifications = $response->json('notifications');
+        $this->assertEmpty(array_filter($notifications, fn ($n) => ($n['type'] ?? '') === 'birthday_greeting'));
     }
 }

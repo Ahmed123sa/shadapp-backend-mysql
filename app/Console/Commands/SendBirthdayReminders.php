@@ -3,15 +3,17 @@
 namespace App\Console\Commands;
 
 use App\Models\Client;
+use App\Models\SubUser;
 use App\Notifications\BirthdayReminderNotification;
 use App\Notifications\BirthdayGreetingNotification;
+use App\Notifications\SubUserBirthdayGreetingNotification;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 
 class SendBirthdayReminders extends Command
 {
     protected $signature = 'birthdays:send-reminders';
-    protected $description = 'Send birthday reminders to managers and greetings to clients';
+    protected $description = 'Send birthday reminders to managers and greetings to clients and sub-users';
 
     public function handle(): void
     {
@@ -41,6 +43,19 @@ class SendBirthdayReminders extends Command
 
         foreach ($todayClients as $client) {
             $client->notify(new BirthdayGreetingNotification($client));
+            $sent++;
+        }
+
+        // Sub-users' own birthdays — only for an active client, same as the client
+        // greeting above. Push only; see SubUserBirthdayGreetingNotification.
+        $todaySubUsers = SubUser::whereNotNull('date_of_birth')
+            ->whereMonth('date_of_birth', $now->month)
+            ->whereDay('date_of_birth', $now->day)
+            ->whereHas('client', fn ($q) => $q->where('status', 'active'))
+            ->get();
+
+        foreach ($todaySubUsers as $subUser) {
+            $subUser->notify(new SubUserBirthdayGreetingNotification($subUser));
             $sent++;
         }
 

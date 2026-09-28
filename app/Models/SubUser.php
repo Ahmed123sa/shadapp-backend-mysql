@@ -75,6 +75,12 @@ class SubUser extends Authenticatable
         if ($type === null) {
             return true;
         }
+        // The client's own birthday greeting is personal to them — it used to fall
+        // through to `return true` below and reach every one of their sub-users.
+        // A sub-user gets their own greeting instead (SubUserBirthdayGreetingNotification).
+        if ($type === 'birthday_greeting') {
+            return false;
+        }
         if ($type === 'chat') {
             return $this->hasPermission('can_chat');
         }
