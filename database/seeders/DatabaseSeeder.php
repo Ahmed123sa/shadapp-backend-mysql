@@ -152,7 +152,7 @@ class DatabaseSeeder extends Seeder
         //     'size' => 320000,
         // ]);
 
-        // $this->call(ContractClauseTemplateSeeder::class);
+        $this->call(ContractClauseTemplateSeeder::class);
 
         // --- System Settings ---
         SystemSetting::setValue('corporate_tax_percentage', 15, 'نسبة ضريبة الشركات المقدرة (%)');

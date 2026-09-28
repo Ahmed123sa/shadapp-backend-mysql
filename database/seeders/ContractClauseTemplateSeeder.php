@@ -22,7 +22,7 @@ class ContractClauseTemplateSeeder extends Seeder
             ['type' => 'optional', 'category' => 'ip', 'content' => 'جميع حقوق الملكية الفكرية للمنتجات المسلمة تبقى مملوكة للطرف الأول.', 'sort_order' => 7],
             ['type' => 'optional', 'category' => 'renewal', 'content' => 'يجدد العقد تلقائياً لمدة مماثلة ما لم يخطر أحد الطرفين الآخر برغبته في عدم التجديد.', 'sort_order' => 8],
             ['type' => 'optional', 'category' => 'dispute', 'content' => 'في حالة وجود نزاع، يتم حله ودياً خلال 30 يوماً، وإلا يُحال إلى التحكيم.', 'sort_order' => 9],
-            ['type' => 'optional', 'category' => 'governing_law', 'content' => 'يسري على هذا العقد أحكام القانون السعودي.', 'sort_order' => 10],
+            ['type' => 'optional', 'category' => 'governing_law', 'content' => 'يسري على هذا العقد أحكام القانون المصري.', 'sort_order' => 10],
             ['type' => 'optional', 'category' => 'tax', 'content' => 'قيمة العقد المذكورة أعلاه لا تشمل قيمة الضريبة المضافة.', 'sort_order' => 11],
         ];
 
