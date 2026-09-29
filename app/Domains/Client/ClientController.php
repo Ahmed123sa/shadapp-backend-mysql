@@ -64,7 +64,7 @@ class ClientController extends Controller
         $client = Client::create([
             'company_name' => $request->company_name,
             'contact_person' => $request->contact_person,
-            'email' => $request->email,
+            'email' => strtolower(trim($request->email)),
             'phone' => $request->phone,
             'password' => $password,
             'manager_id' => $request->user()->id,
@@ -146,6 +146,11 @@ class ClientController extends Controller
             'signature_data' => $signatureData,
             'signed_at' => now(),
         ]);
+
+        $manager = $client->manager ?? $client->workspace?->manager;
+        if ($manager) {
+            $manager->notify(new \App\Notifications\ClientSignatureSavedNotification($client));
+        }
 
         return response()->json(['client' => $client->fresh()]);
     }

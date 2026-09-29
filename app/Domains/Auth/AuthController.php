@@ -118,14 +118,16 @@ class AuthController extends Controller
             return false;
         }
 
+        $email = strtolower(trim($email));
+
         return Client::where('email', $email)->exists()
             || SubUser::where('email', $email)->exists();
     }
 
     public function login(LoginRequest $request): JsonResponse
     {
-
-        $user = User::where('email', $request->email)->first();
+        $email = strtolower(trim($request->email));
+        $user = User::where('email', $email)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             // The response is identical either way on purpose (so this
@@ -176,8 +178,10 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
+        $email = strtolower(trim($request->email));
+
         // 1. Try Client first
-        $client = Client::where('email', $request->email)->first();
+        $client = Client::where('email', $email)->first();
         if ($client && Hash::check($request->password, $client->password)) {
             // Archived clients are blocked here rather than earlier, for the
             // same reason as deactivated managers above: the credential
@@ -213,7 +217,7 @@ class AuthController extends Controller
         }
 
         // 2. Try SubUser
-        $subUser = SubUser::where('email', $request->email)->first();
+        $subUser = SubUser::where('email', $email)->first();
         if ($subUser && Hash::check($request->password, $subUser->password)) {
             // A sub-user acts on behalf of its parent client, so archiving
             // the client must freeze it too — otherwise "client login:
