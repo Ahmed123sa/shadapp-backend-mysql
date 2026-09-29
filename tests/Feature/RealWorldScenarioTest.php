@@ -32,6 +32,8 @@ class RealWorldScenarioTest extends TestCase
             'role' => User::ROLE_SUPER_ADMIN,
             'name' => 'مؤسس شاد آب',
             'email' => 'admin@shadapp.com',
+            'signature_data' => 'data:image/png;base64,sa-signature-data',
+            'signed_at' => now(),
         ]);
     }
 

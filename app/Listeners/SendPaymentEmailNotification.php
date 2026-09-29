@@ -61,11 +61,10 @@ class SendPaymentEmailNotification
     {
         $payment = $event->payment;
         $client = $payment->client;
-        $mail = new PaymentApprovedMail($payment);
 
-        if ($client?->email) {
+        if ($event->action === 'approved' && $client?->email) {
             try {
-                Mail::to($client->email)->send($mail);
+                Mail::to($client->email)->send(new PaymentApprovedMail($payment));
             } catch (\Exception $e) {
                 Log::warning('Failed to send payment review email: ' . $e->getMessage());
             }
@@ -73,8 +72,7 @@ class SendPaymentEmailNotification
 
         if ($client) {
             try {
-                $workspace = $payment->workspace;
-                $activated = $workspace && $workspace->status === 'active';
+                $activated = $event->action === 'approved' && $event->wasWorkspaceActivated;
                 $client->notify(new PaymentReviewedNotification($payment, $event->action, $activated));
             } catch (\Exception $e) {
                 Log::warning('Failed to send payment reviewed notification: ' . $e->getMessage());

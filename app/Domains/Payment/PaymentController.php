@@ -244,7 +244,7 @@ class PaymentController extends Controller
 
     public function update(Request $request, Workspace $workspace, Payment $payment): JsonResponse
     {
-        if (!in_array($payment->status, ['pending', 'scheduled'])) {
+        if (!in_array($payment->status, ['pending', 'scheduled', 'rejected'])) {
             return response()->json(['message' => 'لا يمكن تعديل هذه الدفعة'], 422);
         }
 
@@ -259,6 +259,8 @@ class PaymentController extends Controller
             'proof_files' => 'nullable|array',
             'proof_files.*' => UploadRules::proof(required: true),
         ]);
+
+        $wasPending = $payment->status === 'pending';
 
         if ($request->has('amount')) $payment->amount = $request->amount;
         if ($request->has('currency')) {
@@ -279,13 +281,28 @@ class PaymentController extends Controller
             $payment->proof_file_url = $proofFileUrl;
         }
 
-        if ($payment->status === 'scheduled') {
+        if ($payment->status === 'scheduled' || $payment->status === 'rejected') {
             $payment->status = 'pending';
             $payment->reviewed_by = null;
             $payment->reviewed_at = null;
+            $payment->notes = null; // Clear rejection reason on new proof upload
         }
 
         $payment->save();
+
+        if (!$wasPending && $payment->status === 'pending') {
+            PaymentCreated::dispatch($payment->fresh());
+            PaymentStatusChanged::dispatch($payment->fresh());
+
+            AuditLog::create([
+                'auditable_type' => Payment::class,
+                'auditable_id' => $payment->id,
+                'client_id' => $workspace->client_id,
+                'user_id' => $request->user() instanceof \App\Models\User ? $request->user()->id : null,
+                'action' => 'payment.submitted',
+                'ip_address' => $request->ip(),
+            ]);
+        }
 
         return response()->json(['payment' => $payment->fresh()]);
     }
@@ -294,21 +311,27 @@ class PaymentController extends Controller
     {
         $action = $request->input('action');
 
-        $payment->update([
-            'status' => $action === 'rejected' ? 'pending' : 'approved',
-            'reviewed_by' => $request->user()->id,
-            'reviewed_at' => now(),
-        ]);
+        $workspace = $payment->workspace->fresh();
+        $wasInactive = $workspace->status !== 'active';
 
         if ($action === 'rejected') {
-            PaymentReviewed::dispatch($payment, 'rejected');
-            PaymentStatusChanged::dispatch($payment);
+            $notes = $request->input('notes') ?? $request->input('rejection_reason');
+            $payment->update([
+                'status' => 'rejected',
+                'reviewed_by' => $request->user()->id,
+                'reviewed_at' => now(),
+                'notes' => $notes,
+            ]);
+
+            PaymentReviewed::dispatch($payment->fresh(), 'rejected', false);
+            PaymentStatusChanged::dispatch($payment->fresh());
 
             AuditLog::create([
                 'auditable_type' => Payment::class,
                 'auditable_id' => $payment->id,
                 'user_id' => $request->user()->id,
                 'action' => 'payment.rejected',
+                'metadata' => $notes ? ['reason' => $notes] : null,
                 'ip_address' => $request->ip(),
             ]);
 
@@ -319,49 +342,26 @@ class PaymentController extends Controller
             ]);
         }
 
-        $workspace = $payment->workspace;
-        $workspace = $workspace->fresh();
+        $payment->update([
+            'status' => 'approved',
+            'reviewed_by' => $request->user()->id,
+            'reviewed_at' => now(),
+            'notes' => $request->input('notes'),
+        ]);
 
-        $reviewerName = $request->user()?->name ?? 'system';
-        $workspace->contracts()->where('status', 'client_approved')->each(function (Contract $contract) use ($reviewerName) {
-            $contract->update([
-                'status' => 'company_approved',
-                'company_signed_at' => now(),
-                'company_signature_data' => $reviewerName,
-                'company_signature_type' => 'text',
-            ]);
-            ContractCompanyApproved::dispatch($contract, true);
-        });
-        // The bulk ->update() below bypasses Eloquent model events entirely
-        // (query-builder update, not a per-model ->save()), so
-        // ContractStatusChanged can't be fired from an Observer for this
-        // half of the transition — capture which contracts are about to
-        // flip to 'completed' first, run the bulk update, then dispatch the
-        // event explicitly for each one with its final status.
-        $completingContractIds = $workspace->contracts()->where('status', 'company_approved')->pluck('id');
-        $workspace->contracts()->where('status', 'company_approved')->update(['status' => 'completed']);
-        Contract::whereIn('id', $completingContractIds)->get()->each(function (Contract $contract) {
-            ContractStatusChanged::dispatch($contract);
-        });
+        $activatedNow = false;
+        if ($wasInactive) {
+            $contractApproved = $workspace->contracts()->whereIn('status', ['completed', 'company_approved'])->exists();
+            if ($contractApproved) {
+                $workspace->update(['status' => 'active', 'activated_at' => now()]);
+                WorkspaceStatusChanged::dispatch($workspace->fresh());
+                $activatedNow = true;
+                Log::info('Workspace activated after payment approval', ['workspace_id' => $workspace->id]);
+            }
+        }
         $payment->client->update(['payment_status' => 'approved']);
 
-        $contractApproved = $workspace->contracts()->whereIn('status', ['completed', 'company_approved', 'client_approved'])->exists();
-        $paymentApproved = true;
-
-        if ($contractApproved && $paymentApproved) {
-            $workspace->update(['status' => 'active', 'activated_at' => now()]);
-            WorkspaceStatusChanged::dispatch($workspace->fresh());
-            Log::info('Workspace activated after payment approval', ['workspace_id' => $workspace->id]);
-        } else {
-            Log::warning('Workspace NOT activated on payment approval', [
-                'workspace_id' => $workspace->id,
-                'has_approved_contracts' => $contractApproved,
-                'payment_id' => $payment->id,
-                'contract_statuses' => $workspace->contracts()->pluck('status')->toArray(),
-            ]);
-        }
-
-        PaymentReviewed::dispatch($payment, 'approved');
+        PaymentReviewed::dispatch($payment->fresh(), 'approved', $activatedNow);
         PaymentStatusChanged::dispatch($payment->fresh());
 
         AuditLog::create([

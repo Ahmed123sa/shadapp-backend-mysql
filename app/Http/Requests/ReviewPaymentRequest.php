@@ -16,6 +16,8 @@ class ReviewPaymentRequest extends FormRequest
     {
         return [
             'action' => 'required|in:approved,rejected',
+            'notes' => 'nullable|string|max:1000',
+            'rejection_reason' => 'nullable|string|max:1000',
         ];
     }
 }

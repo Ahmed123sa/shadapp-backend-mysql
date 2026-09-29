@@ -21,9 +21,6 @@ use Tests\TestCase;
  * from every call-site listed in plan section 3, on top of the existing
  * notification/email events (which RealtimeBroadcastCharacterizationTest and
  * PaymentReviewActivationCharacterizationTest continue to guard unchanged).
- *
- * Mirrored from shadapp-backend (the Postgres copy) — this is the MySQL
- * copy kept in sync per the project's established dual-backend convention.
  */
 class RealtimeEventDispatchTest extends TestCase
 {
@@ -126,10 +123,15 @@ class RealtimeEventDispatchTest extends TestCase
     {
         Event::fake([ContractStatusChanged::class, WorkspaceStatusChanged::class]);
         [$manager, $client, $workspace] = $this->makeWorkspace('inactive');
+        $superAdmin = User::factory()->create([
+            'role' => User::ROLE_SUPER_ADMIN,
+            'signature_data' => 'توقيع الشركة',
+            'signed_at' => now(),
+        ]);
         $contract = Contract::factory()->create(['workspace_id' => $workspace->id, 'created_by' => $manager->id, 'status' => 'client_approved']);
         Payment::factory()->create(['workspace_id' => $workspace->id, 'client_id' => $client->id, 'status' => 'approved']);
 
-        $this->actingAs($manager)->postJson("/api/contracts/{$contract->id}/company-approve")->assertOk();
+        $this->actingAs($superAdmin)->postJson("/api/contracts/{$contract->id}/company-approve")->assertOk();
 
         Event::assertDispatched(ContractStatusChanged::class, fn ($e) => $e->contract->id === $contract->id);
         Event::assertDispatched(WorkspaceStatusChanged::class, fn ($e) => $e->workspace->id === $workspace->id && $e->workspace->status === 'active');
@@ -139,9 +141,14 @@ class RealtimeEventDispatchTest extends TestCase
     {
         Event::fake([ContractStatusChanged::class, WorkspaceStatusChanged::class]);
         [$manager, , $workspace] = $this->makeWorkspace('inactive');
+        $superAdmin = User::factory()->create([
+            'role' => User::ROLE_SUPER_ADMIN,
+            'signature_data' => 'توقيع الشركة',
+            'signed_at' => now(),
+        ]);
         $contract = Contract::factory()->create(['workspace_id' => $workspace->id, 'created_by' => $manager->id, 'status' => 'client_approved']);
 
-        $this->actingAs($manager)->postJson("/api/contracts/{$contract->id}/company-approve")->assertOk();
+        $this->actingAs($superAdmin)->postJson("/api/contracts/{$contract->id}/company-approve")->assertOk();
 
         Event::assertDispatched(ContractStatusChanged::class);
         Event::assertNotDispatched(WorkspaceStatusChanged::class);
@@ -187,25 +194,21 @@ class RealtimeEventDispatchTest extends TestCase
 
         $this->actingAs($manager)->postJson("/api/payments/{$payment->id}/review", ['action' => 'rejected'])->assertOk();
 
-        Event::assertDispatched(PaymentStatusChanged::class, fn ($e) => $e->payment->id === $payment->id && $e->payment->status === 'pending');
+        Event::assertDispatched(PaymentStatusChanged::class, fn ($e) => $e->payment->id === $payment->id && $e->payment->status === 'rejected');
         Event::assertNotDispatched(ContractStatusChanged::class);
         Event::assertNotDispatched(WorkspaceStatusChanged::class);
     }
 
-    public function test_review_approved_dispatches_payment_contract_and_workspace_events(): void
+    public function test_review_approved_dispatches_payment_and_workspace_events(): void
     {
         Event::fake([PaymentStatusChanged::class, ContractStatusChanged::class, WorkspaceStatusChanged::class]);
         [$manager, $client, $workspace] = $this->makeWorkspace('inactive');
-        $contract = Contract::factory()->create(['workspace_id' => $workspace->id, 'created_by' => $manager->id, 'status' => 'client_approved']);
+        $contract = Contract::factory()->create(['workspace_id' => $workspace->id, 'created_by' => $manager->id, 'status' => 'company_approved']);
         $payment = Payment::factory()->create(['workspace_id' => $workspace->id, 'client_id' => $client->id, 'status' => 'pending']);
 
         $this->actingAs($manager)->postJson("/api/payments/{$payment->id}/review", ['action' => 'approved'])->assertOk();
 
         Event::assertDispatched(PaymentStatusChanged::class, fn ($e) => $e->payment->id === $payment->id && $e->payment->status === 'approved');
-        // The contract cascades all the way to 'completed' within this single
-        // request (see PaymentReviewActivationCharacterizationTest) — the
-        // event fires once, carrying that final status.
-        Event::assertDispatched(ContractStatusChanged::class, fn ($e) => $e->contract->id === $contract->id && $e->contract->status === 'completed');
         Event::assertDispatched(WorkspaceStatusChanged::class, fn ($e) => $e->workspace->id === $workspace->id && $e->workspace->status === 'active');
     }
 }

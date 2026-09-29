@@ -454,24 +454,51 @@ class ContractController extends Controller
 
         $request->validate([
             'signature' => 'nullable|string',
+            'use_saved_signature' => 'nullable|boolean',
         ]);
 
-        $contract->update([
-            'status' => 'company_approved',
-            'company_signed_at' => now(),
-            'company_signature_data' => $request->signature ?? $request->user()->signature_data ?? $request->user()->name,
-            'company_signature_type' => $request->signature && (str_starts_with($request->signature, '/storage/') || str_starts_with($request->signature, 'http')) ? 'image' : 'text',
-        ]);
+        $signature = null;
+        if ($request->boolean('use_saved_signature')) {
+            $signature = $request->user()->signature_data;
+        } elseif ($request->filled('signature')) {
+            $signature = $request->signature;
+        } else {
+            $signature = $request->user()->signature_data;
+        }
+
+        if (empty($signature)) {
+            return response()->json([
+                'message' => 'لازم توفر توقيع الشركة الأول قبل الاعتماد.',
+                'code' => 'signature_required',
+            ], 422);
+        }
+
+        $sigType = (str_starts_with($signature, '/storage/') || str_starts_with($signature, 'http') || str_starts_with($signature, '/api/storage/')) ? 'image' : 'text';
 
         $workspace = $contract->workspace->fresh();
+        $wasInactive = $workspace->status !== 'active';
 
-        // Activate workspace if already fully paid
-        if ($workspace->payments()->where('status', 'approved')->exists()) {
+        // Additional contracts in an active workspace immediately complete once company signs
+        $isAdditional = $contract->contract_type === 'additional' || !$wasInactive;
+        $finalStatus = $isAdditional ? 'completed' : 'company_approved';
+
+        $contract->update([
+            'status' => $finalStatus,
+            'company_signed_at' => now(),
+            'company_signature_data' => $signature,
+            'company_signature_type' => $sigType,
+        ]);
+
+        // Activate workspace only if it was inactive and already fully paid
+        if ($wasInactive && $workspace->payments()->where('status', 'approved')->exists()) {
             $workspace->update(['status' => 'active', 'activated_at' => now()]);
             WorkspaceStatusChanged::dispatch($workspace->fresh());
         }
 
         event(new ContractCompanyApproved($contract));
+        if ($finalStatus === 'completed') {
+            event(new ContractCompleted($contract));
+        }
         ContractStatusChanged::dispatch($contract);
 
         AuditLog::create([
@@ -491,8 +518,8 @@ class ContractController extends Controller
 
         $contract->update(['status' => 'completed']);
 
-        $workspace = $contract->workspace;
-        if ($workspace->payments()->where('status', 'approved')->exists()) {
+        $workspace = $contract->workspace->fresh();
+        if ($workspace->status !== 'active' && $workspace->payments()->where('status', 'approved')->exists()) {
             $workspace->update(['status' => 'active', 'activated_at' => now()]);
             WorkspaceStatusChanged::dispatch($workspace->fresh());
         }

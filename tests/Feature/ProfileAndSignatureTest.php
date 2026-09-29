@@ -179,15 +179,15 @@ class ProfileAndSignatureTest extends TestCase
         $response->assertJsonPath('contract.company_signature_data', 'Saved Admin Signature');
     }
 
-    public function test_company_approve_falls_back_to_name(): void
+    public function test_company_approve_requires_signature_when_no_saved_signature(): void
     {
         $this->admin->update(['signature_data' => null, 'signed_at' => null]);
 
         $response = $this->actingAs($this->admin, 'sanctum')
             ->postJson("/api/contracts/{$this->contract->id}/company-approve", []);
 
-        $response->assertStatus(200);
-        $response->assertJsonPath('contract.company_signature_data', $this->admin->name);
+        $response->assertStatus(422);
+        $response->assertJsonPath('code', 'signature_required');
     }
 
     public function test_company_approve_request_overrides_saved(): void

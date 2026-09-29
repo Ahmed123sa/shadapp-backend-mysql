@@ -58,7 +58,7 @@ class ContractPolicy
 
     public function companyApprove($user, Contract $contract): bool
     {
-        return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $contract->workspace->manager_id === $user->id);
+        return $user instanceof \App\Models\User && $user->isSuperAdmin();
     }
 
     public function complete($user, Contract $contract): bool

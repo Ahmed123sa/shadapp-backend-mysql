@@ -27,6 +27,7 @@ class ContractWorkflowTest extends TestCase
         $this->workspace = Workspace::factory()->create([
             'client_id' => $this->client->id,
             'manager_id' => $this->manager->id,
+            'status' => 'inactive',
         ]);
     }
 
@@ -193,6 +194,11 @@ class ContractWorkflowTest extends TestCase
     public function test_company_can_approve_contract(): void
     {
         $this->client->update(['signature_data' => 'توقيع تجريبي']);
+        $superAdmin = User::factory()->create([
+            'role' => User::ROLE_SUPER_ADMIN,
+            'signature_data' => 'توقيع الشركة',
+            'signed_at' => now(),
+        ]);
 
         $response = $this->actingAs($this->manager)->postJson("/api/workspaces/{$this->workspace->id}/contracts", [
             'title' => 'Company Approve',
@@ -206,7 +212,7 @@ class ContractWorkflowTest extends TestCase
         $this->withHeaders(['Authorization' => 'Bearer ' . $token])
             ->postJson("/api/contracts/{$contractId}/client-action", ['action' => 'approved']);
 
-        $response = $this->actingAs($this->manager)->postJson("/api/contracts/{$contractId}/company-approve");
+        $response = $this->actingAs($superAdmin)->postJson("/api/contracts/{$contractId}/company-approve");
         $response->assertOk();
         $this->assertEquals('company_approved', Contract::find($contractId)->status);
     }

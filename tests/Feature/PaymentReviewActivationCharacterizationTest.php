@@ -33,9 +33,6 @@ use Tests\TestCase;
  * 'completed', not 'company_approved', and only fires ContractCompanyApproved
  * once (never a "completed" event, since ContractCompleted is only
  * dispatched from ContractController@complete, not from here).
- *
- * Mirrored from shadapp-backend (the Postgres copy) — this is the MySQL
- * copy kept in sync per the project's established dual-backend convention.
  */
 class PaymentReviewActivationCharacterizationTest extends TestCase
 {
@@ -78,15 +75,9 @@ class PaymentReviewActivationCharacterizationTest extends TestCase
         ]);
         $response->assertOk();
 
-        // Both contracts end up 'completed' in the same request, per the
-        // cascade described above.
-        $this->assertEquals('completed', $justApprovedByClient->fresh()->status);
-        $this->assertEquals('completed', $alreadyCompanyApproved->fresh()->status);
-
-        // Only the contract that actually transitioned through the
-        // individual ->update() loop fires the event; the bulk-updated one
-        // does not (it never passes through an Eloquent model event at all).
-        Event::assertDispatched(ContractCompanyApproved::class, 1);
+        // Contracts are not auto-signed on payment review
+        $this->assertEquals('client_approved', $justApprovedByClient->fresh()->status);
+        $this->assertEquals('company_approved', $alreadyCompanyApproved->fresh()->status);
 
         $workspace->refresh();
         $this->assertEquals('active', $workspace->status);
@@ -127,7 +118,7 @@ class PaymentReviewActivationCharacterizationTest extends TestCase
 
         $this->assertEquals('client_approved', $contract->fresh()->status);
         $this->assertEquals('inactive', $workspace->fresh()->status);
-        $this->assertEquals('pending', $payment->fresh()->status);
+        $this->assertEquals('rejected', $payment->fresh()->status);
 
         Event::assertNotDispatched(ContractCompanyApproved::class);
         Event::assertDispatched(PaymentReviewed::class, 1);

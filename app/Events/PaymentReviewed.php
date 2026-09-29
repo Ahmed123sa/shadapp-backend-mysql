@@ -13,10 +13,12 @@ class PaymentReviewed
 
     public Payment $payment;
     public string $action;
+    public bool $wasWorkspaceActivated;
 
-    public function __construct(Payment $payment, string $action)
+    public function __construct(Payment $payment, string $action, bool $wasWorkspaceActivated = false)
     {
         $this->payment = $payment;
         $this->action = $action;
+        $this->wasWorkspaceActivated = $wasWorkspaceActivated;
     }
 }
