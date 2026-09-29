@@ -26,13 +26,14 @@ class SettingsController extends Controller
         }
 
         $validated = $request->validate([
-            'key' => 'required|string|in:corporate_tax_percentage,show_contract_dates',
+            'key' => 'required|string|in:corporate_tax_percentage,show_contract_dates,managers_can_review_files',
             'value' => 'required',
         ]);
 
         $description = match ($validated['key']) {
             'corporate_tax_percentage' => 'نسبة ضريبة الشركات (%)',
             'show_contract_dates' => 'إظهار تواريخ بداية ونهاية العقد',
+            'managers_can_review_files' => 'السماح للمدير بالموافقة على ملفات عملائه',
             default => null,
         };
 

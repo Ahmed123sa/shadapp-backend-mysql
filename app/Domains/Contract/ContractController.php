@@ -378,6 +378,26 @@ class ContractController extends Controller
             ], 422);
         }
 
+        // A contract that asks for documents can't be approved until each one has a
+        // file uploaded that hasn't been rejected. Approval (by staff) isn't
+        // required — the client shouldn't wait on review to sign. Checked only at
+        // approval time, so contracts already approved are unaffected.
+        if ($request->action === 'approved') {
+            $missing = $contract->requiredDocuments()
+                ->where('is_required', true)
+                ->whereDoesntHave('files', fn ($q) => $q->where('status', '!=', 'rejected'))
+                ->orderBy('sort_order')
+                ->pluck('name');
+
+            if ($missing->isNotEmpty()) {
+                return response()->json([
+                    'message' => 'لازم ترفع المستندات المطلوبة الأول: ' . $missing->implode('، '),
+                    'code' => 'required_documents_missing',
+                    'missing_documents' => $missing->values(),
+                ], 422);
+            }
+        }
+
         $contract->update([
             'status' => $status,
             'client_signed_at' => $request->action === 'approved' ? now() : null,

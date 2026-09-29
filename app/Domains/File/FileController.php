@@ -11,8 +11,13 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use App\Models\Payment;
 use App\Models\ContractRequiredDocument;
+use App\Models\ChatMessage;
+use App\Models\SystemSetting;
+use App\Events\MessageDeleted;
 use App\Support\UploadRules;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class FileController extends Controller
 {
@@ -120,7 +125,12 @@ class FileController extends Controller
 
     public function review(Request $request, FileEntry $file): JsonResponse
     {
-        if (!$request->user()->isSuperAdmin()) {
+        $user = $request->user();
+        $managerAllowed = $user instanceof \App\Models\User
+            && filter_var(SystemSetting::getValue('managers_can_review_files', false), FILTER_VALIDATE_BOOLEAN)
+            && $file->workspace?->manager_id === $user->id;
+
+        if (! $user->isSuperAdmin() && ! $managerAllowed) {
             abort(403, 'Only Super Admin can review documents');
         }
 
@@ -207,8 +217,33 @@ class FileController extends Controller
         // getRawOriginal bypasses the file_url accessor (which signs the value
         // for display) to get back the plain, permanently-shaped stored path.
         $rawUrl = $file->getRawOriginal('file_url');
-        if ($rawUrl && Storage::disk('public')->exists(str_replace('/storage/', '', $rawUrl))) {
-            Storage::disk('public')->delete(str_replace('/storage/', '', $rawUrl));
+
+        // A file sent in chat is one stored file behind two rows: this FileEntry and
+        // the chat message. Deleting only this one left the message pointing at a
+        // file that no longer exists (a broken attachment). The message goes too —
+        // unless it carries an approval request, which stays as the record of it.
+        if ($rawUrl) {
+            $workspace->chatMessages()
+                ->where('type', 'file')
+                ->where('file_url', $rawUrl)
+                ->whereNull('approval_id')
+                ->get()
+                ->each(function (ChatMessage $message) use ($workspace) {
+                    $id = $message->id;
+                    $message->delete();
+                    try {
+                        broadcast(new MessageDeleted($id, $workspace->id))->toOthers();
+                    } catch (\Exception $e) {
+                        Log::warning('Chat delete broadcast failed (non-critical): ' . $e->getMessage());
+                    }
+                });
+        }
+
+        if ($rawUrl) {
+            $path = ltrim(Str::after((string) (parse_url($rawUrl, PHP_URL_PATH) ?: $rawUrl), '/storage/'), '/');
+            if ($path !== '' && Storage::disk('public')->exists($path)) {
+                Storage::disk('public')->delete($path);
+            }
         }
 
         $file->delete();
