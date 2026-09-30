@@ -30,7 +30,7 @@ class PaymentReviewedNotification extends BaseNotification
         }
         $currency = $this->payment->currency ?? 'SAR';
         $label = $this->action === 'rejected' ? 'رفضها' : 'اعتمادها';
-        return [
+        $data = [
             'type' => 'payment_reviewed',
             'title' => $this->action === 'rejected' ? 'تم رفض الدفعة' : 'تم اعتماد الدفعة',
             'payment_id' => $this->payment->id,
@@ -41,6 +41,10 @@ class PaymentReviewedNotification extends BaseNotification
             'client_id' => $this->payment->client_id,
             'message' => "الدفعة {$this->payment->amount} {$currency} تم {$label}",
         ];
+        if ($this->action === 'rejected' && !empty($this->payment->rejection_reason)) {
+            $data['rejection_reason'] = $this->payment->rejection_reason;
+        }
+        return $data;
     }
 
     public function toFcm($notifiable): array
@@ -58,9 +62,6 @@ class PaymentReviewedNotification extends BaseNotification
         }
         $currency = $this->payment->currency ?? 'SAR';
         $body = $this->action === 'rejected' ? "الدفعة {$this->payment->amount} {$currency} مرفوضة" : "الدفعة {$this->payment->amount} {$currency} مقبولة";
-        // plans/notifications-badges-toasts-plan.md ن5 — this used to send
-        // 'payment.approved' here regardless of $this->action, so a rejected
-        // payment's push carried the exact same type as an approved one.
         $type = $this->action === 'rejected' ? 'payment.rejected' : 'payment.approved';
         return [
             'title' => 'مراجعة دفعة',

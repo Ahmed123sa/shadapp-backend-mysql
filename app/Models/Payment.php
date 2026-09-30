@@ -14,7 +14,7 @@ class Payment extends Model
         'workspace_id', 'client_id', 'contract_id', 'amount', 'currency',
         'due_date', 'installment_label', 'requested_by_manager',
         'method_type', 'proof_file', 'proof_file_url', 'status',
-        'notes', 'reviewed_by', 'reviewed_at',
+        'notes', 'rejection_reason', 'reviewed_by', 'reviewed_at',
     ];
 
     public function contract(): BelongsTo

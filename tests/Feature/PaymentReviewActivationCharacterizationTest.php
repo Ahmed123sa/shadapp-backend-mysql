@@ -75,9 +75,9 @@ class PaymentReviewActivationCharacterizationTest extends TestCase
         ]);
         $response->assertOk();
 
-        // Contracts are not auto-signed on payment review
+        // Contracts are not auto-signed on payment review, but already company_approved contracts complete on workspace activation
         $this->assertEquals('client_approved', $justApprovedByClient->fresh()->status);
-        $this->assertEquals('company_approved', $alreadyCompanyApproved->fresh()->status);
+        $this->assertEquals('completed', $alreadyCompanyApproved->fresh()->status);
 
         $workspace->refresh();
         $this->assertEquals('active', $workspace->status);

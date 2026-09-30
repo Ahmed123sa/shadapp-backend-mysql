@@ -285,7 +285,7 @@ class PaymentController extends Controller
             $payment->status = 'pending';
             $payment->reviewed_by = null;
             $payment->reviewed_at = null;
-            $payment->notes = null; // Clear rejection reason on new proof upload
+            $payment->rejection_reason = null; // Clear rejection reason on new proof upload
         }
 
         $payment->save();
@@ -310,17 +310,16 @@ class PaymentController extends Controller
     public function review(ReviewPaymentRequest $request, Payment $payment): JsonResponse
     {
         $action = $request->input('action');
-
         $workspace = $payment->workspace->fresh();
         $wasInactive = $workspace->status !== 'active';
 
         if ($action === 'rejected') {
-            $notes = $request->input('notes') ?? $request->input('rejection_reason');
+            $rejectionReason = $request->input('rejection_reason') ?? $request->input('notes');
             $payment->update([
                 'status' => 'rejected',
                 'reviewed_by' => $request->user()->id,
                 'reviewed_at' => now(),
-                'notes' => $notes,
+                'rejection_reason' => $rejectionReason,
             ]);
 
             PaymentReviewed::dispatch($payment->fresh(), 'rejected', false);
@@ -331,7 +330,7 @@ class PaymentController extends Controller
                 'auditable_id' => $payment->id,
                 'user_id' => $request->user()->id,
                 'action' => 'payment.rejected',
-                'metadata' => $notes ? ['reason' => $notes] : null,
+                'metadata' => $rejectionReason ? ['reason' => $rejectionReason] : null,
                 'ip_address' => $request->ip(),
             ]);
 
@@ -342,17 +341,28 @@ class PaymentController extends Controller
             ]);
         }
 
-        $payment->update([
+        $paymentData = [
             'status' => 'approved',
             'reviewed_by' => $request->user()->id,
             'reviewed_at' => now(),
-            'notes' => $request->input('notes'),
-        ]);
+            'rejection_reason' => null,
+        ];
+        if ($request->has('notes') && $request->input('notes') !== null) {
+            $paymentData['notes'] = $request->input('notes');
+        }
+        $payment->update($paymentData);
 
         $activatedNow = false;
         if ($wasInactive) {
             $contractApproved = $workspace->contracts()->whereIn('status', ['completed', 'company_approved'])->exists();
             if ($contractApproved) {
+                $companyApprovedContracts = $workspace->contracts()->where('status', 'company_approved')->get();
+                foreach ($companyApprovedContracts as $c) {
+                    $c->update(['status' => 'completed']);
+                    event(new \App\Events\ContractCompleted($c));
+                    ContractStatusChanged::dispatch($c);
+                }
+
                 $workspace->update(['status' => 'active', 'activated_at' => now()]);
                 WorkspaceStatusChanged::dispatch($workspace->fresh());
                 $activatedNow = true;

@@ -114,7 +114,7 @@ class PaymentLifecycleAndContractRulesTest extends TestCase
         $response->assertOk();
         $fresh = $payment->fresh();
         $this->assertEquals('rejected', $fresh->status);
-        $this->assertEquals('صورة التحويل غير واضحة، يرجى رفع صورة واضحة ومختومة', $fresh->notes);
+        $this->assertEquals('صورة التحويل غير واضحة، يرجى رفع صورة واضحة ومختومة', $fresh->rejection_reason);
 
         Notification::assertSentTo($client, PaymentReviewedNotification::class, function ($notif) {
             return $notif->action === 'rejected' && $notif->workspaceActivated === false;
@@ -134,7 +134,8 @@ class PaymentLifecycleAndContractRulesTest extends TestCase
             'currency' => 'SAR',
             'status' => 'rejected',
             'method_type' => 'bank_transfer',
-            'notes' => 'صورة التحويل غير واضحة',
+            'notes' => 'ملاحظة أصلية من العميل',
+            'rejection_reason' => 'صورة التحويل غير واضحة',
         ]);
 
         $file = UploadedFile::fake()->create('new_proof.pdf', 500, 'application/pdf');
@@ -147,7 +148,8 @@ class PaymentLifecycleAndContractRulesTest extends TestCase
         $response->assertOk();
         $fresh = $payment->fresh();
         $this->assertEquals('pending', $fresh->status);
-        $this->assertNull($fresh->notes);
+        $this->assertNull($fresh->rejection_reason);
+        $this->assertEquals('ملاحظة أصلية من العميل', $fresh->notes);
 
         Event::assertDispatched(PaymentCreated::class);
     }

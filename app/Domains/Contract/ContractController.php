@@ -478,9 +478,12 @@ class ContractController extends Controller
         $workspace = $contract->workspace->fresh();
         $wasInactive = $workspace->status !== 'active';
 
-        // Additional contracts in an active workspace immediately complete once company signs
+        $hasApprovedPayment = $workspace->payments()->where('status', 'approved')->exists();
+        $activatesNow = $wasInactive && $hasApprovedPayment;
+
+        // Additional contracts in an active workspace or contracts whose approval activates the workspace become completed
         $isAdditional = $contract->contract_type === 'additional' || !$wasInactive;
-        $finalStatus = $isAdditional ? 'completed' : 'company_approved';
+        $finalStatus = ($isAdditional || $activatesNow) ? 'completed' : 'company_approved';
 
         $contract->update([
             'status' => $finalStatus,
@@ -490,7 +493,7 @@ class ContractController extends Controller
         ]);
 
         // Activate workspace only if it was inactive and already fully paid
-        if ($wasInactive && $workspace->payments()->where('status', 'approved')->exists()) {
+        if ($activatesNow) {
             $workspace->update(['status' => 'active', 'activated_at' => now()]);
             WorkspaceStatusChanged::dispatch($workspace->fresh());
         }
