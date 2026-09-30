@@ -135,21 +135,20 @@ class ChatApprovalRespondTest extends TestCase
         $this->assertSame('edit_requested', Approval::find($this->message->approval_id)->status);
     }
 
-    // client-signature-plan.md ن5 — this endpoint is also reachable by staff
-    // proxying the client's response (e.g. the AM entering it after verbal
-    // sign-off over the phone), the same pattern already established and
-    // tested for ContractController::clientAction() (see
-    // RealWorldScenarioTest, which calls that endpoint as the AM, not the
-    // client). Staff's own saved signature is irrelevant here — the one that
-    // belongs on the approval is the client's own.
-    public function test_a_manager_can_approve_on_the_clients_behalf_when_the_client_has_a_saved_signature(): void
+    // subuser-review-plan.md م٣ — staff used to be able to proxy the
+    // client's response (e.g. the AM entering it after verbal sign-off over
+    // the phone), the same pattern that used to exist for
+    // ContractController::clientAction(). That proxy path is gone: only the
+    // client (or a permitted sub-user) can respond now, regardless of
+    // whether the client has a saved signature.
+    public function test_a_manager_cannot_approve_on_the_clients_behalf_even_with_a_saved_signature(): void
     {
         $this->app['auth']->forgetGuards();
         $this->actingAs($this->manager)
             ->postJson("/api/chat/{$this->message->id}/respond", ['action' => 'approved'])
-            ->assertOk();
+            ->assertStatus(403);
 
-        $this->assertSame('approved', Approval::find($this->message->approval_id)->status);
+        $this->assertSame('pending', Approval::find($this->message->approval_id)->status);
     }
 
     public function test_a_manager_cannot_approve_on_the_clients_behalf_without_the_clients_saved_signature(): void
@@ -159,8 +158,7 @@ class ChatApprovalRespondTest extends TestCase
         $this->app['auth']->forgetGuards();
         $this->actingAs($this->manager)
             ->postJson("/api/chat/{$this->message->id}/respond", ['action' => 'approved'])
-            ->assertStatus(422)
-            ->assertJson(['code' => 'signature_required']);
+            ->assertStatus(403);
 
         $this->assertSame('pending', Approval::find($this->message->approval_id)->status);
     }

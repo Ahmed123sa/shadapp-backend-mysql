@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\UniqueLoginEmail;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreManagerRequest extends FormRequest
@@ -15,7 +16,8 @@ class StoreManagerRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users',
+            // subuser-review-plan.md م٧
+            'email' => ['required', 'email', 'unique:users', new UniqueLoginEmail()],
             'password' => 'nullable|string|min:8|regex:/[A-Za-z]/|regex:/[0-9]/',
             'phone' => 'nullable|string|max:20',
             'date_of_birth' => 'nullable|date',

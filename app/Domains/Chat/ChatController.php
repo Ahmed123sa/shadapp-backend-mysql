@@ -11,6 +11,7 @@ use App\Notifications\ChatMessageSentNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -158,6 +159,18 @@ class ChatController extends Controller
     {
         abort_unless($chatMessage->workspace->canBeAccessedBy($request->user()), 403, 'غير مصرح لك بالوصول إلى مساحة العمل هذه');
 
+        $user = $request->user();
+        // subuser-review-plan.md م٢ — marking a message as needing the
+        // client's approval (or un-marking it) is the manager's call; a
+        // client or sub-user must never be able to flip it themselves, e.g.
+        // to cancel an approval request aimed at them.
+        abort_unless(
+            $user instanceof \App\Models\User
+                && ($user->isSuperAdmin() || $chatMessage->workspace->manager_id === $user->id),
+            403,
+            'غير مصرح'
+        );
+
         $newValue = !$chatMessage->requires_action;
 
         $chatMessage->update(['requires_action' => $newValue]);
@@ -191,16 +204,18 @@ class ChatController extends Controller
         $user = $request->user();
         abort_unless($chatMessage->workspace->canBeAccessedBy($user), 403, 'غير مصرح لك بالوصول إلى مساحة العمل هذه');
 
-        // This endpoint is reachable by a Client, a SubUser, or a User
-        // (staff) proxying the client's response — same three principals as
-        // ContractController::clientAction(), which RealWorldScenarioTest
-        // exercises with the AM calling client-action directly (a real,
-        // tested proxy flow, not a hypothetical one). Whoever calls it, the
-        // signature that belongs on the approval is always the client's own:
-        // a sub-user has none of its own (sub_users has no signature_data
-        // column, so $user->signature_data would silently evaluate to null —
-        // Eloquent doesn't raise on a missing attribute), and staff's own
-        // saved signature is not the client's. See client-signature-plan.md ن5.
+        // subuser-review-plan.md م٣ — responding to an approval request is
+        // the client's (or a permitted sub-user's) own act; staff can no
+        // longer do it on the client's behalf, even by phone proxy. This
+        // supersedes the "AM proxies client approval by phone" design that
+        // RealWorldScenarioTest used to exercise via this endpoint.
+        abort_if($user instanceof \App\Models\User, 403, 'الرد على طلب الموافقة من العميل بس');
+
+        // Whoever calls it, the signature that belongs on the approval is
+        // always the client's own: a sub-user has none of its own (sub_users
+        // has no signature_data column, so $user->signature_data would
+        // silently evaluate to null — Eloquent doesn't raise on a missing
+        // attribute). See client-signature-plan.md ن5.
         $signature = match (true) {
             $user instanceof \App\Models\SubUser => $user->client?->signature_data,
             $user instanceof \App\Models\Client => $user->signature_data,
@@ -218,11 +233,31 @@ class ChatController extends Controller
             ], 422);
         }
 
-        $chatMessage->update([
-            'action_taken' => true,
-            'action_result' => $request->action,
-            'responded_at' => now(),
-        ]);
+        // subuser-review-plan.md م٨ — guard against a double response: the
+        // same request submitted twice, or the client and a sub-user both
+        // answering at once. lockForUpdate() inside the transaction blocks a
+        // concurrent request until the first one commits, so the second one
+        // always sees action_taken already true.
+        $result = DB::transaction(function () use ($chatMessage, $request) {
+            $locked = ChatMessage::whereKey($chatMessage->id)->lockForUpdate()->first();
+            if (! $locked->requires_action) {
+                return ['error' => 'الرسالة دي مش عليها طلب موافقة'];
+            }
+            if ($locked->action_taken) {
+                return ['error' => 'تم الرد على الطلب ده قبل كده'];
+            }
+            $locked->update([
+                'action_taken' => true,
+                'action_result' => $request->action,
+                'responded_at' => now(),
+            ]);
+            return ['message' => $locked];
+        });
+
+        if (isset($result['error'])) {
+            return response()->json(['message' => $result['error']], 422);
+        }
+        $chatMessage = $result['message'];
 
         // If there's a linked approval, update it too
         $approval = $chatMessage->approval;

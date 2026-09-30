@@ -152,7 +152,10 @@ class AccountManagerController extends Controller
 
         $manager = User::create([
             'name' => $request->name,
-            'email' => $request->email,
+            // subuser-review-plan.md م٧ — lowercase, matching
+            // ClientController::store(), so UniqueLoginEmail's
+            // case-insensitive check can't be bypassed by changing case.
+            'email' => strtolower(trim($request->email)),
             'phone' => $request->phone,
             'date_of_birth' => $request->date_of_birth,
             'password' => $password,
@@ -189,6 +192,9 @@ class AccountManagerController extends Controller
         }
 
         $data = $request->only(['name', 'email', 'phone', 'date_of_birth']);
+        if (isset($data['email'])) {
+            $data['email'] = strtolower(trim($data['email']));
+        }
         if ($request->filled('password')) {
             $data['password'] = $request->password;
         }

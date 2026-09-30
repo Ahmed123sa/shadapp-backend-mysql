@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Client;
+use App\Rules\UniqueLoginEmail;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreClientRequest extends FormRequest
@@ -17,7 +18,10 @@ class StoreClientRequest extends FormRequest
         return [
             'company_name' => 'required|string|max:255',
             'contact_person' => 'required|string|max:255',
-            'email' => 'required|email|unique:clients',
+            // subuser-review-plan.md م٧ — unique:clients alone let a new
+            // client share an email with an existing sub-user or staff
+            // account, and login lookups aren't scoped by intended role.
+            'email' => ['required', 'email', 'unique:clients', new UniqueLoginEmail()],
             'phone' => 'required|string|max:20',
             'password' => 'nullable|string|min:8|regex:/[A-Za-z]/|regex:/[0-9]/',
             'contract_value' => 'nullable|numeric|min:0',

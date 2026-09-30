@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Client;
+use App\Rules\UniqueLoginEmail;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateClientRequest extends FormRequest
@@ -17,7 +18,8 @@ class UpdateClientRequest extends FormRequest
         return [
             'company_name' => 'string|max:255',
             'contact_person' => 'string|max:255',
-            'email' => 'sometimes|email|unique:clients,email,' . $this->route('client')->id,
+            // subuser-review-plan.md م٧
+            'email' => ['sometimes', 'email', 'unique:clients,email,' . $this->route('client')->id, new UniqueLoginEmail('clients', $this->route('client')->id)],
             'phone' => 'string|max:20',
             'password' => 'nullable|string|min:8|regex:/[A-Za-z]/|regex:/[0-9]/',
             'country' => 'nullable|string|max:100',

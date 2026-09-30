@@ -292,11 +292,18 @@ class RealWorldScenarioTest extends TestCase
 
             if ($targetStage < 3) continue;
 
-            // Stage 3: Client approves contract (AM proxies for client)
-            $this->actingAsAM($amUser);
-            $response = $this->call('POST', "/api/contracts/{$contractId}/client-action", [], [], [], [
-                'CONTENT_TYPE' => 'application/json',
-            ], json_encode(['action' => 'approved']));
+            // Stage 3: Client approves contract (subuser-review-plan.md م٣ —
+            // staff can no longer proxy the client's approval; the client
+            // approves themself, same as their sign() call above)
+            $this->resetAuth();
+            $this->defaultHeaders = [];
+            // postJson(), not the raw call() this replaced — withHeaders()
+            // only populates $this->defaultHeaders, which raw call() never
+            // reads (it merges $this->serverVariables instead), so the
+            // Authorization header was silently dropped and the request hit
+            // the auth middleware unauthenticated.
+            $response = $this->withHeaders(['Authorization' => 'Bearer ' . $clientToken])
+                ->postJson("/api/contracts/{$contractId}/client-action", ['action' => 'approved']);
             $response->assertStatus(200);
             $this->assertEquals('client_approved', $contract->fresh()->status);
 
@@ -577,9 +584,11 @@ class RealWorldScenarioTest extends TestCase
         $response->assertStatus(201);
         $c1ContractId = $response->json('contract.id');
         $this->actingAsAM($ahmed)->postJson("/api/contracts/{$c1ContractId}/send")->assertStatus(200);
-        $this->actingAsAM($ahmed);
-        $this->call('POST', "/api/contracts/{$c1ContractId}/client-action", [], [], [],
-            ['CONTENT_TYPE' => 'application/json'], json_encode(['action' => 'approved']))->assertStatus(200);
+        // subuser-review-plan.md م٣ — staff can no longer proxy client-action.
+        $this->resetAuth();
+        $this->defaultHeaders = [];
+        $this->withHeaders(['Authorization' => 'Bearer ' . $c1Token])
+            ->postJson("/api/contracts/{$c1ContractId}/client-action", ['action' => 'approved'])->assertStatus(200);
         $this->actingAsSA()->postJson("/api/contracts/{$c1ContractId}/company-approve")->assertStatus(200);
         $this->resetAuth();
         $this->defaultHeaders = [];
@@ -606,11 +615,12 @@ class RealWorldScenarioTest extends TestCase
         $response->assertStatus(200);
         $this->assertEquals('sent', $response->json('contract.status'));
 
-        // client 2 clientAction
-        $this->actingAsAM($ahmed);
-        $response = $this->call('POST', "/api/contracts/{$c2ContractId}/client-action", [], [], [], [
-            'CONTENT_TYPE' => 'application/json',
-        ], json_encode(['action' => 'approved']));
+        // client 2 clientAction (subuser-review-plan.md م٣ — staff can no
+        // longer proxy client-action; the client approves themself)
+        $this->resetAuth();
+        $this->defaultHeaders = [];
+        $response = $this->withHeaders(['Authorization' => 'Bearer ' . $c2Token])
+            ->postJson("/api/contracts/{$c2ContractId}/client-action", ['action' => 'approved']);
         $response->assertStatus(200);
         $this->assertEquals('client_approved', $response->json('contract.status'));
     }

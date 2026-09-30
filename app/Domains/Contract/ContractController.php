@@ -345,17 +345,18 @@ class ContractController extends Controller
 
         $status = $request->action === 'edit_requested' ? 'edit_requested' : 'client_approved';
 
-        // This endpoint is reachable by a Client, a SubUser, or a User
-        // (staff) proxying the client's approval — e.g. an AM entering it
-        // after getting verbal sign-off over the phone; see
-        // RealWorldScenarioTest's client-action steps, which call this as
-        // the AM, not the client. Whoever calls it, the signature that
-        // belongs on the contract is always the client's own: a sub-user has
-        // none of its own (sub_users has no signature_data column, so
-        // $signer->signature_data would silently evaluate to null — Eloquent
-        // doesn't raise on a missing attribute), and staff's own saved
-        // signature (used for company_signature_data elsewhere) is not the
-        // client's. Same pattern used in ChatController::respond().
+        // subuser-review-plan.md م٣ — approving or asking to edit a contract
+        // is the client's (or a permitted sub-user's) own act; staff can no
+        // longer do it on the client's behalf, even by phone proxy. This
+        // supersedes the "AM proxies client approval by phone" design that
+        // RealWorldScenarioTest used to exercise via this endpoint.
+        abort_if($request->user() instanceof \App\Models\User, 403, 'الموافقة على العقد من العميل بس');
+
+        // Whoever calls it, the signature that belongs on the contract is
+        // always the client's own: a sub-user has none of its own (sub_users
+        // has no signature_data column, so $signer->signature_data would
+        // silently evaluate to null — Eloquent doesn't raise on a missing
+        // attribute). Same pattern used in ChatController::respond().
         $signer = $request->user();
         $signature = match (true) {
             $signer instanceof \App\Models\SubUser => $signer->client?->signature_data,

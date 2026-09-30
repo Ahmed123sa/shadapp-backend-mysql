@@ -97,14 +97,13 @@ class ContractWorkflowTest extends TestCase
         $this->assertNull(Contract::find($contractId)->client_signed_at);
     }
 
-    // client-signature-plan.md ن2 — this endpoint is also reachable by staff
-    // proxying the client's approval (e.g. the AM entering it after verbal
-    // sign-off over the phone) — see RealWorldScenarioTest, which calls this
-    // endpoint as the AM, not the client, in its real-world simulation.
-    // Staff's own saved signature (used for company_signature_data
-    // elsewhere) is irrelevant here — the one that belongs on the contract
-    // is the client's own.
-    public function test_a_manager_can_approve_a_contract_on_the_clients_behalf_when_the_client_has_a_saved_signature(): void
+    // subuser-review-plan.md م٣ — staff used to be able to proxy the
+    // client's approval (e.g. the AM entering it after verbal sign-off over
+    // the phone; RealWorldScenarioTest used to exercise exactly this). That
+    // proxy path is gone: approving or asking to edit a contract is now the
+    // client's (or a permitted sub-user's) own act only, regardless of
+    // whether the client has a saved signature.
+    public function test_a_manager_cannot_approve_a_contract_on_the_clients_behalf_even_with_a_saved_signature(): void
     {
         $this->client->update(['signature_data' => 'توقيع تجريبي']);
 
@@ -116,9 +115,9 @@ class ContractWorkflowTest extends TestCase
 
         $response = $this->actingAs($this->manager)->postJson("/api/contracts/{$contractId}/client-action", ['action' => 'approved']);
 
-        $response->assertOk();
-        $this->assertEquals('client_approved', Contract::find($contractId)->status);
-        $this->assertEquals('توقيع تجريبي', Contract::find($contractId)->client_signature_data);
+        $response->assertStatus(403);
+        $this->assertEquals('sent', Contract::find($contractId)->status);
+        $this->assertNull(Contract::find($contractId)->client_signature_data);
     }
 
     public function test_a_manager_cannot_approve_a_contract_on_the_clients_behalf_without_the_clients_saved_signature(): void
@@ -133,7 +132,7 @@ class ContractWorkflowTest extends TestCase
 
         $response = $this->actingAs($this->manager)->postJson("/api/contracts/{$contractId}/client-action", ['action' => 'approved']);
 
-        $response->assertStatus(422)->assertJson(['code' => 'signature_required']);
+        $response->assertStatus(403);
         $this->assertEquals('sent', Contract::find($contractId)->status);
     }
 

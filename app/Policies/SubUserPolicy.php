@@ -64,19 +64,12 @@ class SubUserPolicy
     }
 
     /**
-     * Same actors as updateProfile — the owning client, or the sub-user
-     * acting on their own account. SubUserController::changePassword()
-     * decides which validation applies (the client skips current_password,
-     * the sub-user must supply it).
+     * subuser-review-plan.md م٤ — email and password are managed by the
+     * owning client only. A sub-user used to be able to change their own
+     * password here (with current_password); that branch is gone.
      */
     public function changePassword($user, SubUser $subUser): bool
     {
-        if ($user instanceof Client) {
-            return $subUser->client_id === $user->id;
-        }
-        if ($user instanceof SubUser) {
-            return $user->id === $subUser->id;
-        }
-        return false;
+        return $user instanceof Client && $subUser->client_id === $user->id;
     }
 }

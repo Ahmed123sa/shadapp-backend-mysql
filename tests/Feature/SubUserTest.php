@@ -769,7 +769,10 @@ class SubUserTest extends TestCase
             ->assertStatus(403);
     }
 
-    public function test_a_sub_user_can_change_their_own_password_with_the_current_one(): void
+    // subuser-review-plan.md م٤ — a sub-user could change their own password
+    // (with current_password); that self-service path is gone. Only the
+    // owning client can change a sub-user's password now.
+    public function test_a_sub_user_cannot_change_their_own_password_even_with_the_current_one(): void
     {
         [$client] = $this->makeClient();
         $subUser = SubUser::factory()->create([
@@ -782,25 +785,7 @@ class SubUserTest extends TestCase
                 'current_password' => 'OldPassword1',
                 'password' => 'NewPassword2',
             ])
-            ->assertStatus(200);
-
-        $this->assertTrue(Hash::check('NewPassword2', $subUser->fresh()->password));
-    }
-
-    public function test_a_sub_user_cannot_change_their_own_password_with_the_wrong_current_one(): void
-    {
-        [$client] = $this->makeClient();
-        $subUser = SubUser::factory()->create([
-            'client_id' => $client->id,
-            'password' => 'OldPassword1',
-        ]);
-
-        $this->actingAs($subUser, 'sub_user')
-            ->patchJson("/api/sub-users/{$subUser->id}/password", [
-                'current_password' => 'WrongPassword9',
-                'password' => 'NewPassword2',
-            ])
-            ->assertStatus(422);
+            ->assertStatus(403);
 
         $this->assertTrue(Hash::check('OldPassword1', $subUser->fresh()->password));
     }
@@ -817,7 +802,7 @@ class SubUserTest extends TestCase
             ->patchJson("/api/sub-users/{$subUser->id}/password", [
                 'password' => 'NewPassword2',
             ])
-            ->assertStatus(422);
+            ->assertStatus(403);
     }
 
     public function test_changing_a_sub_users_password_revokes_their_existing_tokens(): void

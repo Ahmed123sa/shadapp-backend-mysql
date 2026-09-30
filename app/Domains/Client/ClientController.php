@@ -106,7 +106,16 @@ class ClientController extends Controller
     {
         $this->authorize('view', $client);
 
-        $client->load('workspace.contracts', 'workspace.payments', 'subUsers', 'payments');
+        $client->load(
+            'workspace.contracts',
+            'workspace.payments',
+            // Onboarding's "contact support" button opens WhatsApp to the
+            // account manager — only their name and phone, nothing else
+            // about them. See subuser-review-plan.md م١.
+            'workspace.manager:id,name,phone',
+            'subUsers',
+            'payments',
+        );
         // Same has_signed_contract definition as index() (23 Sept 2026 fix,
         // see the comment there) — the client detail page's "signed" badge
         // used to read signed_at directly, which only records a profile
@@ -131,7 +140,10 @@ class ClientController extends Controller
 
     public function sign(Request $request, Client $client): JsonResponse
     {
-        $this->authorize('update', $client);
+        // subuser-review-plan.md م٣ — the e-signature is the client's own act;
+        // staff can edit the rest of the profile (update()) but must never be
+        // able to set, replace or remove it on the client's behalf.
+        $this->authorize('sign', $client);
 
         if ($request->hasFile('signature_image')) {
             $request->validate(['signature_image' => UploadRules::image(required: true)]);
@@ -157,7 +169,8 @@ class ClientController extends Controller
 
     public function deleteSign(Client $client): JsonResponse
     {
-        $this->authorize('update', $client);
+        // subuser-review-plan.md م٣ — see sign() above.
+        $this->authorize('sign', $client);
 
         $client->update([
             'signature_data' => null,

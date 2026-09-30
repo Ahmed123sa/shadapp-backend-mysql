@@ -7,10 +7,10 @@ use App\Models\Client;
 use App\Models\User;
 use App\Models\AuditLog;
 use App\Support\UploadRules;
+use App\Rules\UniqueLoginEmail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use App\Http\Controllers\Controller;
 
 class SubUserController extends Controller
@@ -29,7 +29,11 @@ class SubUserController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:sub_users',
+            // subuser-review-plan.md م٧ — unique:sub_users alone let a
+            // sub-user share an email with a client, and clientLogin() tries
+            // clients before sub_users, so the sub-user would silently log
+            // in as that client.
+            'email' => ['required', 'email', 'unique:sub_users', new UniqueLoginEmail()],
             'password' => 'required|string|min:8|regex:/[A-Za-z]/|regex:/[0-9]/',
             'date_of_birth' => 'nullable|date',
         ]);
@@ -53,7 +57,10 @@ class SubUserController extends Controller
         $subUser = DB::transaction(function () use ($request, $client) {
             $subUser = $client->subUsers()->create([
                 'name' => $request->name,
-                'email' => $request->email,
+                // Lowercase, matching ClientController::store() — otherwise
+                // UniqueLoginEmail's case-insensitive check above can be
+                // bypassed on the very next signup by changing case.
+                'email' => strtolower(trim($request->email)),
                 'password' => $request->password,
                 'permissions' => [],
                 'date_of_birth' => $request->date_of_birth,
@@ -172,15 +179,28 @@ class SubUserController extends Controller
     {
         $this->authorize('updateProfile', $subUser);
 
+        $actor = $request->user();
+        // subuser-review-plan.md م٤ — the sub-user's own email is their
+        // login; only the owning client can change it.
+        if ($actor instanceof \App\Models\SubUser && $request->filled('email') && $request->email !== $subUser->email) {
+            abort(403, 'تغيير الإيميل من صاحب الحساب بس');
+        }
+
         $request->validate([
             'name' => 'sometimes|string|max:255',
-            'email' => 'nullable|email|unique:sub_users,email,' . $subUser->id,
+            // subuser-review-plan.md م٧ — same cross-table uniqueness as
+            // store() above; ignoreTable/ignoreId excludes this sub-user's
+            // own row so re-saving an unchanged email still passes.
+            'email' => ['nullable', 'email', 'unique:sub_users,email,' . $subUser->id, new UniqueLoginEmail('sub_users', $subUser->id)],
             'phone' => 'nullable|string|max:20',
             'date_of_birth' => 'nullable|date',
             'avatar' => UploadRules::image(),
         ]);
 
         $updateData = $request->only(['name', 'email', 'phone', 'date_of_birth']);
+        if (isset($updateData['email'])) {
+            $updateData['email'] = strtolower(trim($updateData['email']));
+        }
 
         if ($request->hasFile('avatar')) {
             $path = $request->file('avatar')->store('avatars', 'public');
@@ -262,17 +282,13 @@ class SubUserController extends Controller
 
         $actor = $request->user();
 
-        $rules = [
+        // subuser-review-plan.md م٤ — password changes are the owning
+        // client's call only now (SubUserPolicy::changePassword no longer
+        // lets a sub-user reach this for themselves), so there's no
+        // current_password branch to validate here anymore.
+        $request->validate([
             'password' => 'required|string|min:8|regex:/[A-Za-z]/|regex:/[0-9]/',
-        ];
-        if ($actor instanceof SubUser) {
-            $rules['current_password'] = 'required|string';
-        }
-        $request->validate($rules);
-
-        if ($actor instanceof SubUser && ! Hash::check($request->current_password, $subUser->password)) {
-            return response()->json(['message' => 'كلمة المرور الحالية غير صحيحة'], 422);
-        }
+        ]);
 
         DB::transaction(function () use ($request, $subUser, $actor) {
             $subUser->update(['password' => $request->password]);
@@ -281,15 +297,13 @@ class SubUserController extends Controller
             // password (or a colleague who knew it) can't keep using it.
             $subUser->tokens()->delete();
 
-            // Same dual-actor case as updateProfile() above — the client
-            // resets it, or the sub-user changes their own.
             AuditLog::create([
                 'auditable_type' => SubUser::class,
                 'auditable_id' => $subUser->id,
                 'client_id' => $subUser->client_id,
                 'user_id' => $actor instanceof User ? $actor->id : null,
                 'action' => 'sub_user.password_changed',
-                'metadata' => ['acted_by' => $actor instanceof SubUser ? 'self' : 'client'],
+                'metadata' => ['acted_by' => 'client'],
                 'ip_address' => $request->ip(),
             ]);
         });

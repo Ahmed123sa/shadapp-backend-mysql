@@ -38,6 +38,17 @@ class ClientPolicy
         return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $client->manager_id === $user->id);
     }
 
+    /**
+     * The client's e-signature is theirs alone: staff can edit the rest of
+     * the profile (update()), but never set, replace or remove the
+     * signature that gets stamped onto contracts and approval certificates.
+     * See subuser-review-plan.md م٣.
+     */
+    public function sign($user, Client $client): bool
+    {
+        return $user instanceof \App\Models\Client && $user->id === $client->id;
+    }
+
     public function delete($user, Client $client): bool
     {
         return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $client->manager_id === $user->id);
