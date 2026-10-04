@@ -69,7 +69,7 @@ uploads succeed, but every returned file URL 404s.
 
 | Role        | Email                 | Password   |
 | ----------- | --------------------- | ---------- |
-| Super Admin | admin@shadapp.com     | `password` |
+| Super Admin | official@shadmanagement.co     | `password` |
 | Manager     | manager@shadapp.com   | `password` |
 | Client      | client@shadapp.com    | `password` |
 

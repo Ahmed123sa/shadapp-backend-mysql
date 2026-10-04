@@ -18,8 +18,8 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $superAdmin = User::create([
-            'name' => 'المدير العام',
-            'email' => 'admin@shadapp.com',
+            'name' => 'CEO',
+            'email' => 'official@shadmanagement.co',
             'password' => 'password',
             'role' => User::ROLE_SUPER_ADMIN,
         ]);
@@ -158,7 +158,7 @@ class DatabaseSeeder extends Seeder
         SystemSetting::setValue('corporate_tax_percentage', 15, 'نسبة ضريبة الشركات المقدرة (%)');
 
         $this->command->info('Demo data seeded successfully!');
-        $this->command->info('Super Admin: admin@shadapp.com / password');
+        $this->command->info('Super Admin: official@shadmanagement.co / password');
         // $this->command->info('Manager: manager@shadapp.com / password');
         // $this->command->info('Client: client@shadapp.com / password');
     }
