@@ -1,5 +1,6 @@
 <?php
 
+use App\Domains\Support\SupportController;
 use App\Domains\Auth\AccountDeletionController;
 use App\Domains\Auth\AuthController;
 use App\Domains\Auth\PasswordResetController;
@@ -44,6 +45,9 @@ Route::post('/auth/client/login', [AuthController::class, 'clientLogin'])->middl
 // Loosening this materially weakens the endpoint; see the note in
 // PasswordResetController.
 Route::post('/auth/forgot-password', [PasswordResetController::class, 'forgotStaff'])->middleware('throttle:10,60');
+
+// Public support form (App Store requires a Support URL with a contact form).
+Route::post('/support', [SupportController::class, 'store'])->middleware('throttle:5,60');
 Route::post('/auth/reset-password', [PasswordResetController::class, 'resetStaff'])->middleware('throttle:5,1');
 Route::post('/auth/client/forgot-password', [PasswordResetController::class, 'forgotClient'])->middleware('throttle:10,60');
 Route::post('/auth/client/reset-password', [PasswordResetController::class, 'resetClient'])->middleware('throttle:5,1');
