@@ -165,7 +165,7 @@ class PaymentController extends Controller
     {
         $client = $workspace->client;
 
-        if ($client?->isArchived()) {
+        if ($client?->isFrozen()) {
             return response()->json(['message' => 'العميل ده متأرشف، مينفعش تتضاف له دفعات جديدة. فُك الأرشفة الأول.'], 422);
         }
 

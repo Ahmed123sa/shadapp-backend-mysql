@@ -1,5 +1,6 @@
 <?php
 
+use App\Domains\Auth\AccountDeletionController;
 use App\Domains\Auth\AuthController;
 use App\Domains\Auth\PasswordResetController;
 use App\Domains\AccountManager\AccountManagerController;
@@ -65,6 +66,11 @@ Route::middleware(['auth.any:sanctum,client,sub_user', 'scope.workspace'])->grou
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
     Route::post('/notifications/register-token', [NotificationController::class, 'registerToken']);
     Route::post('/notifications/unregister-token', [NotificationController::class, 'unregisterToken']);
+
+    // In-app account deletion (App Store 5.1.1(v)) — any signed-in account
+    // type; super admins are refused inside the controller. Switch it off
+    // with ACCOUNT_DELETION_ENABLED=false (config/account_deletion.php).
+    Route::delete('/auth/account', [AccountDeletionController::class, 'destroy'])->middleware('throttle:5,1');
 
     // Client show, signature + profile (client or manager)
     Route::get('/clients/{client}', [ClientController::class, 'show']);

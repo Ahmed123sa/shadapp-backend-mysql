@@ -105,6 +105,23 @@ class Client extends Authenticatable
         return $this->status === 'archived';
     }
 
+    /**
+     * Account removed through DELETE /api/auth/account (anonymised, see
+     * AccountDeletionService).
+     */
+    public function isDeleted(): bool
+    {
+        return $this->status === 'deleted';
+    }
+
+    /**
+     * Read-only workspace: archived by a manager, or deleted by the client.
+     */
+    public function isFrozen(): bool
+    {
+        return $this->isArchived() || $this->isDeleted();
+    }
+
     public function workspace(): HasOne
     {
         return $this->hasOne(Workspace::class);

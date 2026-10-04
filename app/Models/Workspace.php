@@ -73,7 +73,7 @@ class Workspace extends Model
      */
     public function isClientArchived(): bool
     {
-        return $this->client?->status === 'archived';
+        return (bool) $this->client?->isFrozen();
     }
 
     /**

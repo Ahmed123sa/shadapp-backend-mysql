@@ -47,6 +47,8 @@ class ClientController extends Controller
             // go through this endpoint's default (they pass include_archived=1)
             // — see DATA_SAFETY_PLAN.md §2.3.3.
             ->when(!$request->boolean('include_archived'), fn($q) => $q->where('status', '!=', 'archived'))
+            // Self-deleted (anonymised) accounts never show in the list.
+            ->where('status', '!=', 'deleted')
             ->when($request->filled('status'), fn($q) => $q->where('status', $request->status))
             ->when($request->filled('client_type'), fn($q) => $q->where('client_type', $request->client_type))
             ->when($request->filled('manager_id') && $user->isSuperAdmin(), fn($q) => $q->where('manager_id', $request->manager_id))

@@ -37,7 +37,7 @@ class DashboardController extends Controller
         $filters = $request->only(['manager_id']);
 
         $totalClients = (clone DashboardScope::clients($isAm, $user, $filters))
-            ->where('status', '!=', 'archived')
+            ->whereNotIn('status', ['archived', 'deleted'])
             ->count();
 
         $activeContracts = (clone DashboardScope::contracts($isAm, $user, $filters))
