@@ -111,6 +111,18 @@ class ManagerAssistantTeamTest extends TestCase
         $this->postJson('/api/team', $this->payload(['password' => 'short']))->assertUnprocessable()->assertJsonValidationErrors('password');
     }
 
+    public function test_a_manager_cannot_exceed_the_assistant_limit(): void
+    {
+        config(['team.max_assistants' => 2]);
+        $this->assistantOf($this->manager);
+        $this->assistantOf($this->manager, ['is_active' => false]); // deactivated still counts
+        $this->assistantOf($this->otherManager);                    // other teams don't
+        Sanctum::actingAs($this->manager);
+
+        $this->postJson('/api/team', $this->payload())->assertUnprocessable()->assertJsonValidationErrors('limit');
+        $this->assertSame(2, User::where('parent_manager_id', $this->manager->id)->count());
+    }
+
     public function test_a_manager_lists_only_their_own_assistants(): void
     {
         $mine = $this->assistantOf($this->manager);

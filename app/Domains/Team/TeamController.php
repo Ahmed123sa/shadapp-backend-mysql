@@ -9,6 +9,7 @@ use App\Rules\UniqueLoginEmail;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * An account manager's own assistants (MANAGER_ASSISTANT_PLAN.md §4.5).
@@ -52,6 +53,12 @@ class TeamController extends Controller
             'permissions' => 'sometimes|array',
             'permissions.*' => 'boolean',
         ]);
+
+        if ($manager->assistants()->count() >= (int) config('team.max_assistants', 10)) {
+            throw ValidationException::withMessages([
+                'limit' => 'وصلت للحد الأقصى لعدد المساعدين (' . config('team.max_assistants', 10) . ').',
+            ]);
+        }
 
         $assistant = DB::transaction(function () use ($data, $manager, $request) {
             $assistant = User::create([
