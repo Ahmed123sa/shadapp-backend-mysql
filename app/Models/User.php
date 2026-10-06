@@ -187,6 +187,26 @@ class User extends Authenticatable
         return $this->belongsTo(User::class, 'parent_manager_id');
     }
 
+    /**
+     * Every assistant permission as an explicit boolean (can_view_clients
+     * always true). Null for anyone who is not an assistant. This is what
+     * the web and mobile apps read to show or hide buttons.
+     */
+    public function assistantPermissionMap(): ?array
+    {
+        if (! $this->isAssistant()) {
+            return null;
+        }
+
+        $stored = $this->assistant_permissions ?? [];
+        $map = [];
+        foreach (self::ASSISTANT_PERMISSION_KEYS as $key) {
+            $map[$key] = $key === 'can_view_clients' ? true : (bool) ($stored[$key] ?? false);
+        }
+
+        return $map;
+    }
+
     public function assistants(): HasMany
     {
         return $this->hasMany(User::class, 'parent_manager_id');

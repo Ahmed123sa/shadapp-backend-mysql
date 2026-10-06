@@ -358,4 +358,24 @@ class ManagerAssistantTeamTest extends TestCase
         $this->assertTrue($this->manager->fresh()->is_active);
         $this->assertNotSame('Deleted account', $this->manager->fresh()->name);
     }
+
+    public function test_login_and_me_expose_the_assistants_full_permission_map(): void
+    {
+        $assistant = $this->assistantOf($this->manager, ['assistant_permissions' => ['can_chat' => true]]);
+
+        $login = $this->postJson('/api/auth/login', ['email' => $assistant->email, 'password' => 'Password123'])->assertOk();
+        $login->assertJsonPath('user.role', 'manager_assistant')
+            ->assertJsonPath('user.assistant_permissions.can_chat', true)
+            ->assertJsonPath('user.assistant_permissions.can_manage_contracts', false)
+            ->assertJsonPath('user.assistant_permissions.can_view_clients', true)
+            ->assertJsonPath('user.parent_manager_id', $this->manager->id);
+
+        Sanctum::actingAs($assistant);
+        $this->getJson('/api/auth/me')->assertOk()
+            ->assertJsonPath('user.assistant_permissions.can_view_files', false)
+            ->assertJsonPath('user.assistant_permissions.can_view_clients', true);
+
+        Sanctum::actingAs($this->manager);
+        $this->getJson('/api/auth/me')->assertOk()->assertJsonMissingPath('user.assistant_permissions');
+    }
 }

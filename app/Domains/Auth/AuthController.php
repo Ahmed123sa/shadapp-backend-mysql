@@ -167,7 +167,10 @@ class AuthController extends Controller
 
         return response()->json([
             'token' => $token,
-            'user' => ['id' => $user->id, 'name' => $user->name, 'email' => $user->email, 'role' => $user->role, 'avatar_url' => $user->avatar_url],
+            'user' => array_merge(
+                ['id' => $user->id, 'name' => $user->name, 'email' => $user->email, 'role' => $user->role, 'avatar_url' => $user->avatar_url],
+                $user->isAssistant() ? ['assistant_permissions' => $user->assistantPermissionMap(), 'parent_manager_id' => $user->parent_manager_id] : [],
+            ),
         ]);
     }
 
@@ -304,7 +307,15 @@ class AuthController extends Controller
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json(['user' => $request->user()]);
+        $user = $request->user();
+        $data = $user->toArray();
+        if ($user->isAssistant()) {
+            // Always the full map, so a permission the manager changed after
+            // login shows up on the next refresh.
+            $data['assistant_permissions'] = $user->assistantPermissionMap();
+        }
+
+        return response()->json(['user' => $data]);
     }
 
     public function sign(Request $request): JsonResponse
