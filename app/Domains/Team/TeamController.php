@@ -52,6 +52,7 @@ class TeamController extends Controller
             'date_of_birth' => 'nullable|date',
             'permissions' => 'sometimes|array',
             'permissions.*' => 'boolean',
+            'send_email' => 'sometimes|boolean',
         ]);
 
         if ($manager->assistants()->count() >= (int) config('team.max_assistants', 10)) {
@@ -76,6 +77,10 @@ class TeamController extends Controller
 
             return $assistant;
         });
+
+        if ($request->boolean('send_email', true)) {
+            \App\Support\CredentialsMailer::send($assistant->name, $assistant->email, $data['password'], 'مساعد مدير حساب');
+        }
 
         return response()->json(['assistant' => $this->shape($assistant->fresh())], 201);
     }
@@ -158,6 +163,7 @@ class TeamController extends Controller
 
         $data = $request->validate([
             'password' => 'required|string|min:8|regex:/[A-Za-z]/|regex:/[0-9]/',
+            'send_email' => 'sometimes|boolean',
         ]);
 
         DB::transaction(function () use ($data, $assistant, $request) {
@@ -166,6 +172,12 @@ class TeamController extends Controller
 
             $this->audit($request, $assistant, 'team.assistant_password_changed');
         });
+
+        // Off by default: a password *change* is usually told to the person
+        // directly; the manager can tick the box to have it emailed.
+        if ($request->boolean('send_email', false)) {
+            \App\Support\CredentialsMailer::send($assistant->name, $assistant->email, $data['password'], 'مساعد مدير حساب');
+        }
 
         return response()->json(['message' => 'تم تغيير الباسورد.']);
     }

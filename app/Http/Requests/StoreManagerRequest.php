@@ -21,6 +21,7 @@ class StoreManagerRequest extends FormRequest
             'password' => 'nullable|string|min:8|regex:/[A-Za-z]/|regex:/[0-9]/',
             'phone' => 'nullable|string|max:20',
             'date_of_birth' => 'nullable|date',
+            'send_email' => 'sometimes|boolean',
         ];
     }
 }

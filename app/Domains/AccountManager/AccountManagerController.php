@@ -172,6 +172,11 @@ class AccountManagerController extends Controller
             'ip_address' => $request->ip(),
         ]);
 
+        // On by default, like the client welcome email; send_email=false opts out.
+        if ($request->boolean('send_email', true)) {
+            \App\Support\CredentialsMailer::send($manager->name, $manager->email, $password, 'مدير حساب');
+        }
+
         return response()->json([
             'manager' => $manager,
             'credentials' => [

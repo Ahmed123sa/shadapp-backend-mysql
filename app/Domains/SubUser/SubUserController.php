@@ -36,6 +36,7 @@ class SubUserController extends Controller
             'email' => ['required', 'email', 'unique:sub_users', new UniqueLoginEmail()],
             'password' => 'required|string|min:8|regex:/[A-Za-z]/|regex:/[0-9]/',
             'date_of_birth' => 'nullable|date',
+            'send_email' => 'sometimes|boolean',
         ]);
 
         // Wrapped in a transaction so a failure writing the AuditLog row
@@ -78,6 +79,10 @@ class SubUserController extends Controller
 
             return $subUser;
         });
+
+        if ($request->boolean('send_email', true)) {
+            \App\Support\CredentialsMailer::send($subUser->name, $subUser->email, $request->password, 'مستخدم فرعي لدى ' . $client->company_name);
+        }
 
         return response()->json(['sub_user' => $this->present($subUser)], 201);
     }
