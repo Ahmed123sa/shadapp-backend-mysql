@@ -7,12 +7,13 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'phone', 'password', 'role', 'super_admin_id', 'official_email', 'signature_data', 'signed_at', 'avatar_url', 'date_of_birth', 'is_active', 'deactivated_at'])]
+#[Fillable(['name', 'email', 'phone', 'password', 'role', 'super_admin_id', 'official_email', 'signature_data', 'signed_at', 'avatar_url', 'date_of_birth', 'is_active', 'deactivated_at', 'parent_manager_id', 'assistant_permissions', 'deactivated_by_parent'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -21,6 +22,19 @@ class User extends Authenticatable
 
     const ROLE_SUPER_ADMIN = 'super_admin';
     const ROLE_ACCOUNT_MANAGER = 'account_manager';
+    const ROLE_MANAGER_ASSISTANT = 'manager_assistant';
+
+    /**
+     * Single source for the permissions a manager can give an assistant
+     * (MANAGER_ASSISTANT_PLAN.md §4.3). can_view_clients is always on.
+     * Payments / finance are deliberately NOT here: they are forbidden to
+     * assistants outright, whatever the manager picks.
+     */
+    public const ASSISTANT_PERMISSION_KEYS = [
+        'can_view_clients', 'can_edit_clients', 'can_chat',
+        'can_manage_contracts', 'can_manage_meetings',
+        'can_view_files', 'can_review_files', 'can_manage_approvals',
+    ];
 
     protected $appends = ['signature_url'];
 
@@ -42,6 +56,8 @@ class User extends Authenticatable
             'signed_at' => 'datetime',
             'date_of_birth' => 'date',
             'is_active' => 'boolean',
+            'deactivated_by_parent' => 'boolean',
+            'assistant_permissions' => 'array',
             'deactivated_at' => 'datetime',
         ];
     }
@@ -57,12 +73,67 @@ class User extends Authenticatable
     }
 
     /**
+     * The account manager whose clients this user may see. For a manager
+     * that is themselves. Every query that scopes by "my clients" must use
+     * this instead of $user->id, and must scope by it for EVERY staff user
+     * who is not a super admin (closed by default) — never the other way
+     * round, or a new staff role would silently inherit super-admin reach.
+     */
+    public function ownerManagerId(): int
+    {
+        if ($this->isAssistant()) {
+            // An assistant with no manager owns nothing: -1 matches no row.
+            return (int) ($this->parent_manager_id ?? -1);
+        }
+
+        return (int) $this->id;
+    }
+
+    public function isAssistant(): bool
+    {
+        return $this->role === self::ROLE_MANAGER_ASSISTANT;
+    }
+
+    public function parentManager(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'parent_manager_id');
+    }
+
+    public function assistants(): HasMany
+    {
+        return $this->hasMany(User::class, 'parent_manager_id');
+    }
+
+    /**
+     * Whether this user may perform the action behind $key. Anyone who is
+     * not an assistant is never limited by assistant permissions (they have
+     * their own role rules); an assistant needs the flag, and
+     * can_view_clients is always granted.
+     */
+    public function assistantCan(string $key): bool
+    {
+        if (! $this->isAssistant()) {
+            return true;
+        }
+        if ($key === 'can_view_clients') {
+            return true;
+        }
+
+        return (bool) (($this->assistant_permissions ?? [])[$key] ?? false);
+    }
+
+    /**
      * True for every account with no deactivation history — including super
      * admins, who don't go through the deactivate/activate flow at all.
      * Only account managers can ever have is_active === false.
      */
     public function isActive(): bool
     {
+        if ($this->isAssistant()) {
+            // Needs both: switched on itself AND its manager still active.
+            return (bool) $this->is_active && (bool) $this->parentManager?->is_active;
+        }
+
         return (bool) $this->is_active;
     }
 

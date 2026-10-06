@@ -39,9 +39,8 @@ class PaymentController extends Controller
         $user = $request->user();
         $query = Payment::with(['workspace.client', 'workspace.manager', 'contract']);
 
-        if ($user->isAccountManager()) {
-            $clientIds = $user->managedClients()->pluck('id');
-            $query->whereIn('client_id', $clientIds);
+        if (!$user->isSuperAdmin()) {
+            $query->whereIn('client_id', Client::where('manager_id', $user->ownerManagerId())->select('id'));
         }
 
         if ($request->filled('status')) {
@@ -118,9 +117,8 @@ class PaymentController extends Controller
         $query = Payment::with(['workspace.client', 'contract'])
             ->where('status', 'pending');
 
-        if ($user->isAccountManager()) {
-            $clientIds = $user->managedClients()->pluck('id');
-            $query->whereIn('client_id', $clientIds);
+        if (!$user->isSuperAdmin()) {
+            $query->whereIn('client_id', Client::where('manager_id', $user->ownerManagerId())->select('id'));
         }
 
         return response()->json([

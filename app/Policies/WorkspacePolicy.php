@@ -30,7 +30,7 @@ class WorkspacePolicy
     {
         if ($user instanceof \App\Models\Client && $workspace->client_id === $user->id) return true;
         if ($user instanceof SubUser && $workspace->client_id === $user->client_id) return true;
-        return $this->isSuperAdmin($user) || ($user instanceof \App\Models\User && $workspace->manager_id === $user->id);
+        return $this->isSuperAdmin($user) || ($user instanceof \App\Models\User && $workspace->manager_id === $user->ownerManagerId());
     }
 
     public function create($user): bool
@@ -40,6 +40,7 @@ class WorkspacePolicy
 
     public function activate($user, Workspace $workspace): bool
     {
+        // $user->id on purpose, not ownerManagerId(): an assistant must never activate a workspace.
         return $this->isSuperAdmin($user) || $workspace->manager_id === $user->id;
     }
 

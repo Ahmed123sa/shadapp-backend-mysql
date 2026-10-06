@@ -35,8 +35,8 @@ class AuditController extends Controller
         }
 
         $user = $request->user();
-        if ($user->isAccountManager()) {
-            $clientIds = $user->managedClients()->pluck('id');
+        if (!$user->isSuperAdmin()) {
+            $clientIds = \App\Models\Client::where('manager_id', $user->ownerManagerId())->pluck('id');
             $query->where(function ($q) use ($user, $clientIds) {
                 $q->where('user_id', $user->id)
                   ->orWhereIn('client_id', $clientIds)
@@ -52,7 +52,7 @@ class AuditController extends Controller
     public function reports(Request $request): JsonResponse
     {
         $user = $request->user();
-        $isAm = $user->isAccountManager();
+        $isAm = !$user->isSuperAdmin();
 
         $filters = $request->only([
             'date_from', 'date_to', 'client_id', 'manager_id',

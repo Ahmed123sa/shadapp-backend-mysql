@@ -166,7 +166,7 @@ class ChatController extends Controller
         // to cancel an approval request aimed at them.
         abort_unless(
             $user instanceof \App\Models\User
-                && ($user->isSuperAdmin() || $chatMessage->workspace->manager_id === $user->id),
+                && ($user->isSuperAdmin() || ($chatMessage->workspace->manager_id === $user->ownerManagerId() && $user->assistantCan('can_manage_approvals'))),
             403,
             'غير مصرح'
         );

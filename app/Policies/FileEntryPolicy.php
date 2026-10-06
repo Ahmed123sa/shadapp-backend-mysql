@@ -16,6 +16,6 @@ class FileEntryPolicy
     {
         if ($user instanceof \App\Models\Client) return true;
         if ($user instanceof SubUser) return true;
-        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER]);
+        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT]);
     }
 }

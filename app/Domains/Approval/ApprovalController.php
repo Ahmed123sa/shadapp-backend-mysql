@@ -33,7 +33,7 @@ class ApprovalController extends Controller
         // this list and that count always agree.
         $workspaceIds = $user->role === 'super_admin'
             ? Workspace::pluck('id')
-            : Workspace::where('manager_id', $user->id)->pluck('id');
+            : Workspace::where('manager_id', $user->ownerManagerId())->pluck('id');
 
         $approvals = Approval::whereIn('workspace_id', $workspaceIds)
             ->where('status', 'pending')

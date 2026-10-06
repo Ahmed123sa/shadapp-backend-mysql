@@ -27,7 +27,7 @@ class FileController extends Controller
 
         $user = $request->user();
         $files = FileEntry::with('workspace.client', 'uploadedBy')
-            ->when($user->isAccountManager(), fn($q) => $q->whereHas('workspace', fn($q) => $q->where('manager_id', $user->id)))
+            ->when(!$user->isSuperAdmin(), fn($q) => $q->whereHas('workspace', fn($q) => $q->where('manager_id', $user->ownerManagerId())))
             ->latest()
             ->paginate(30);
 
@@ -128,7 +128,8 @@ class FileController extends Controller
         $user = $request->user();
         $managerAllowed = $user instanceof \App\Models\User
             && filter_var(SystemSetting::getValue('managers_can_review_files', false), FILTER_VALIDATE_BOOLEAN)
-            && $file->workspace?->manager_id === $user->id;
+            && $file->workspace?->manager_id === $user->ownerManagerId()
+            && $user->assistantCan('can_review_files');
 
         if (! $user->isSuperAdmin() && ! $managerAllowed) {
             abort(403, 'Only Super Admin can review documents');

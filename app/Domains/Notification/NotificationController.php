@@ -151,8 +151,8 @@ class NotificationController extends Controller
             return null;
         };
 
-        if ($authUser instanceof User && $authUser->isAccountManager()) {
-            $managedClients = $authUser->managedClients()->with('workspace')->get();
+        if ($authUser instanceof User && !$authUser->isSuperAdmin()) {
+            $managedClients = \App\Models\Client::where('manager_id', $authUser->ownerManagerId())->with('workspace')->get();
             $workspaceIds = $managedClients->pluck('workspace.id')->filter()->toArray();
             // ن3 — a manager's own birthday/meeting reminders had none of
             // workspace_id/contract_id/payment_id/approval_id at all (only

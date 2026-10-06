@@ -33,7 +33,7 @@ class DashboardController extends Controller
     public function stats(Request $request): JsonResponse
     {
         $user = $request->user();
-        $isAm = $user->isAccountManager();
+        $isAm = !$user->isSuperAdmin();
         $filters = $request->only(['manager_id']);
 
         $totalClients = (clone DashboardScope::clients($isAm, $user, $filters))
@@ -72,14 +72,22 @@ class DashboardController extends Controller
             ->map(fn ($v) => (float) $v)
             ->toArray();
 
-        return response()->json([
+        $response = [
             'clients' => ['total' => $totalClients],
             'contracts' => ['active' => $activeContracts, 'awaiting_client' => $awaitingClientContracts],
             'payments' => ['pending' => $pendingPayments],
             'approvals' => $approvals,
             'revenue_this_month' => $revenueThisMonth,
             'period' => ['month' => $nowInTz->format('Y-m'), 'timezone' => $displayTz],
-        ]);
+        ];
+
+        // An assistant gets no money keys at all (not zeros): the apps hide
+        // the cards when the keys are missing.
+        if ($user->isAssistant()) {
+            unset($response['payments'], $response['revenue_this_month']);
+        }
+
+        return response()->json($response);
     }
 
     /**
@@ -107,7 +115,7 @@ class DashboardController extends Controller
     public function pendingApprovals(Request $request): JsonResponse
     {
         $user = $request->user();
-        $isAm = $user->isAccountManager();
+        $isAm = !$user->isSuperAdmin();
         $filters = $request->only(['manager_id']);
 
         // Oldest-first, not newest-first: the longest-waiting item is the
@@ -367,7 +375,7 @@ class DashboardController extends Controller
 
     private function amCounts($user): JsonResponse
     {
-        $workspaceIds = Workspace::where('manager_id', $user->id)->pluck('id');
+        $workspaceIds = Workspace::where('manager_id', $user->ownerManagerId())->pluck('id');
 
         $chat = ChatMessage::whereIn('workspace_id', $workspaceIds)
             ->where('sender_type', '!=', get_class($user))

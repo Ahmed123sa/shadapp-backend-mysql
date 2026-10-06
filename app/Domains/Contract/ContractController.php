@@ -34,7 +34,7 @@ class ContractController extends Controller
         // stays 30 so a caller that never sends per_page sees no change.
         $perPage = max(1, min((int) $request->input('per_page', 30), 100));
         $contracts = Contract::with('workspace.client')
-            ->when($user->isAccountManager(), fn($q) => $q->whereHas('workspace', fn($q) => $q->where('manager_id', $user->id)))
+            ->when(!$user->isSuperAdmin(), fn($q) => $q->whereHas('workspace', fn($q) => $q->where('manager_id', $user->ownerManagerId())))
             ->latest()
             ->paginate($perPage);
 

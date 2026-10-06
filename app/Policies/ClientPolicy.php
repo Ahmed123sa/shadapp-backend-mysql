@@ -11,7 +11,7 @@ class ClientPolicy
 
     public function viewAny($user): bool
     {
-        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER]);
+        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT]);
     }
 
     public function view($user, Client $client): bool
@@ -22,7 +22,7 @@ class ClientPolicy
         if ($user instanceof \App\Models\SubUser && $user->client_id === $client->id) {
             return true;
         }
-        return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $client->manager_id === $user->id);
+        return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $client->manager_id === $user->ownerManagerId());
     }
 
     public function create($user): bool
@@ -35,7 +35,8 @@ class ClientPolicy
         if ($user instanceof \App\Models\Client && $user->id === $client->id) {
             return true;
         }
-        return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $client->manager_id === $user->id);
+        return $user instanceof \App\Models\User
+            && ($user->isSuperAdmin() || ($client->manager_id === $user->ownerManagerId() && $user->assistantCan('can_edit_clients')));
     }
 
     /**

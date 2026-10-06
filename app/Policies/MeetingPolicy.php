@@ -20,32 +20,35 @@ class MeetingPolicy
     {
         if ($user instanceof \App\Models\Client) return true;
         if ($user instanceof SubUser) return true;
-        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER]);
+        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT]);
     }
 
     public function view($user, Meeting $meeting): bool
     {
         $isClient = $user instanceof \App\Models\Client && $meeting->workspace->client_id === $user->id;
         $isSubUser = $user instanceof SubUser && $meeting->workspace->client_id === $user->client_id;
-        $isManager = $user instanceof \App\Models\User && ($user->isSuperAdmin() || $meeting->workspace->manager_id === $user->id);
+        $isManager = $user instanceof \App\Models\User && ($user->isSuperAdmin() || $meeting->workspace->manager_id === $user->ownerManagerId());
         return $isClient || $isSubUser || $isManager;
     }
 
     public function create($user): bool
     {
-        return $user instanceof \App\Models\User && $user->isAccountManager();
+        return $user instanceof \App\Models\User
+            && ($user->isAccountManager() || ($user->isAssistant() && $user->assistantCan('can_manage_meetings')));
     }
 
     public function update($user, Meeting $meeting): bool
     {
         if ($user instanceof \App\Models\Client) return false;
-        return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $meeting->workspace->manager_id === $user->id);
+        return $user instanceof \App\Models\User
+            && ($user->isSuperAdmin() || ($meeting->workspace->manager_id === $user->ownerManagerId() && $user->assistantCan('can_manage_meetings')));
     }
 
     public function delete($user, Meeting $meeting): bool
     {
         if ($user instanceof \App\Models\Client) return false;
-        return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $meeting->workspace->manager_id === $user->id);
+        return $user instanceof \App\Models\User
+            && ($user->isSuperAdmin() || ($meeting->workspace->manager_id === $user->ownerManagerId() && $user->assistantCan('can_manage_meetings')));
     }
 
     // The workspace's own account manager or the super admin may start the
@@ -54,6 +57,6 @@ class MeetingPolicy
     public function host($user, Meeting $meeting): bool
     {
         return $user instanceof \App\Models\User
-            && ($user->isSuperAdmin() || $meeting->workspace->manager_id === $user->id);
+            && ($user->isSuperAdmin() || ($meeting->workspace->manager_id === $user->ownerManagerId() && $user->assistantCan('can_manage_meetings')));
     }
 }

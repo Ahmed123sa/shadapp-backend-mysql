@@ -30,7 +30,7 @@ class ClientController extends Controller
             // which only records the client saving a profile signature, so
             // a paid, active client could show as not contracted.
             ->withExists(['contracts as has_signed_contract' => fn ($q) => $q->whereIn('contracts.status', Client::SIGNED_CONTRACT_STATUSES)])
-            ->when($user->isAccountManager(), fn($q) => $q->where('manager_id', $user->id))
+            ->when(!$user->isSuperAdmin(), fn($q) => $q->where('manager_id', $user->ownerManagerId()))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $search = $request->q;
                 $q->where(function ($q) use ($search) {

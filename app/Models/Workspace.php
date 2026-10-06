@@ -86,7 +86,7 @@ class Workspace extends Model
     public function canBeAccessedBy($user): bool
     {
         return match (true) {
-            $user instanceof User => $user->isSuperAdmin() || $this->manager_id === $user->id,
+            $user instanceof User => $user->isSuperAdmin() || $this->manager_id === $user->ownerManagerId(),
             $user instanceof Client => $this->client_id === $user->id,
             $user instanceof SubUser => $this->client_id === $user->client_id,
             default => false,

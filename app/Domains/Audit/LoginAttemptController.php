@@ -61,11 +61,11 @@ class LoginAttemptController extends Controller
         // don't exist are a system-wide security concern for the super
         // admin, not something an account manager can act on — but it does
         // mean an AM's view is deliberately not the whole picture.
-        if ($user->isAccountManager()) {
-            $managedClientIds = Client::where('manager_id', $user->id)->select('id');
+        if (!$user->isSuperAdmin()) {
+            $managedClientIds = Client::where('manager_id', $user->ownerManagerId())->select('id');
 
             $query->where(function ($q) use ($user, $managedClientIds) {
-                $q->whereIn('email', Client::where('manager_id', $user->id)->select('email'))
+                $q->whereIn('email', Client::where('manager_id', $user->ownerManagerId())->select('email'))
                     ->orWhereIn('email', SubUser::whereIn('client_id', $managedClientIds)->select('email'));
             });
         }

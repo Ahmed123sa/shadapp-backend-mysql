@@ -25,35 +25,40 @@ class ContractPolicy
     {
         if ($user instanceof \App\Models\Client) return true;
         if ($user instanceof SubUser) return true;
-        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER]);
+        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT]);
     }
 
     public function view($user, Contract $contract): bool
     {
         $isClient = $user instanceof \App\Models\Client && $contract->workspace->client_id === $user->id;
         $isSubUser = $user instanceof SubUser && $contract->workspace->client_id === $user->client_id;
-        $isManager = $user instanceof \App\Models\User && ($user->isSuperAdmin() || $contract->workspace->manager_id === $user->id);
+        $isManager = $user instanceof \App\Models\User && ($user->isSuperAdmin() || $contract->workspace->manager_id === $user->ownerManagerId());
         return $isClient || $isSubUser || $isManager;
     }
 
     public function create($user): bool
     {
-        return $user instanceof \App\Models\User && $user->isAccountManager();
+        return $user instanceof \App\Models\User
+            && ($user->isAccountManager() || ($user->isAssistant() && $user->assistantCan('can_manage_contracts')));
     }
 
     public function update($user, Contract $contract): bool
     {
-        return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $contract->workspace->manager_id === $user->id);
+        return $user instanceof \App\Models\User
+            && ($user->isSuperAdmin() || ($contract->workspace->manager_id === $user->ownerManagerId() && $user->assistantCan('can_manage_contracts')));
     }
 
     public function delete($user, Contract $contract): bool
     {
-        return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $contract->workspace->manager_id === $user->id);
+        return $user instanceof \App\Models\User
+            && ($user->isSuperAdmin() || ($contract->workspace->manager_id === $user->ownerManagerId() && $user->assistantCan('can_manage_contracts')));
     }
 
     public function send($user, Contract $contract): bool
     {
-        return $user instanceof \App\Models\User && $contract->workspace->manager_id === $user->id;
+        return $user instanceof \App\Models\User
+            && $contract->workspace->manager_id === $user->ownerManagerId()
+            && $user->assistantCan('can_manage_contracts');
     }
 
     public function companyApprove($user, Contract $contract): bool

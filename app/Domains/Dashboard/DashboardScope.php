@@ -12,7 +12,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Scopes a query to what a user is allowed to see for reporting/dashboard
- * purposes: an account manager to their own clients, a super admin to
+ * purposes: any non-super-admin staff to their owner manager's clients
+ * (callers pass $isAm = !isSuperAdmin — closed by default), a super admin to
  * everyone (optionally narrowed by manager_id or the other filters below).
  *
  * 24 Sept 2026 — extracted verbatim from AuditController::reports()'s
@@ -50,7 +51,7 @@ class DashboardScope
     public static function clients(bool $isAm, $user, array $filters = []): Builder
     {
         $q = Client::query();
-        if ($isAm) $q->where('manager_id', $user->id);
+        if ($isAm) $q->where('manager_id', $user->ownerManagerId());
         if (!empty($filters['manager_id']) && $user->isSuperAdmin()) {
             $q->where('manager_id', $filters['manager_id']);
         }
@@ -70,7 +71,7 @@ class DashboardScope
     public static function workspaces(bool $isAm, $user, array $filters = []): Builder
     {
         $q = Workspace::query();
-        if ($isAm) $q->whereHas('client', fn ($cq) => $cq->where('manager_id', $user->id));
+        if ($isAm) $q->whereHas('client', fn ($cq) => $cq->where('manager_id', $user->ownerManagerId()));
         if (!empty($filters['client_id'])) {
             $q->where('client_id', $filters['client_id']);
         }
@@ -81,7 +82,7 @@ class DashboardScope
     public static function contracts(bool $isAm, $user, array $filters = []): Builder
     {
         $q = Contract::query();
-        if ($isAm) $q->whereHas('workspace.client', fn ($cq) => $cq->where('manager_id', $user->id));
+        if ($isAm) $q->whereHas('workspace.client', fn ($cq) => $cq->where('manager_id', $user->ownerManagerId()));
         if (!empty($filters['client_id'])) {
             $q->whereHas('workspace', fn ($wq) => $wq->where('client_id', $filters['client_id']));
         }
@@ -92,7 +93,11 @@ class DashboardScope
     public static function payments(bool $isAm, $user, array $filters = []): Builder
     {
         $q = Payment::query();
-        if ($isAm) $q->whereHas('client', fn ($cq) => $cq->where('manager_id', $user->id));
+        // Assistants never see payments or revenue, in any dashboard number.
+        if ($user->isAssistant()) {
+            return $q->whereRaw('1 = 0');
+        }
+        if ($isAm) $q->whereHas('client', fn ($cq) => $cq->where('manager_id', $user->ownerManagerId()));
         self::applyClientFilters($q, $filters);
         self::applyDateRange($q, $filters);
         return $q;
@@ -101,7 +106,7 @@ class DashboardScope
     public static function approvals(bool $isAm, $user, array $filters = []): Builder
     {
         $q = Approval::query();
-        if ($isAm) $q->whereHas('workspace.client', fn ($cq) => $cq->where('manager_id', $user->id));
+        if ($isAm) $q->whereHas('workspace.client', fn ($cq) => $cq->where('manager_id', $user->ownerManagerId()));
         if (!empty($filters['client_id'])) {
             $q->whereHas('workspace', fn ($wq) => $wq->where('client_id', $filters['client_id']));
         }
@@ -113,7 +118,7 @@ class DashboardScope
     {
         $q = AuditLog::query();
         if ($isAm) {
-            $clientIds = $user->managedClients()->pluck('id');
+            $clientIds = Client::where('manager_id', $user->ownerManagerId())->pluck('id');
             $q->where(function ($q) use ($user, $clientIds) {
                 $q->where('user_id', $user->id)
                   ->orWhereIn('client_id', $clientIds)

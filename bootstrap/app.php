@@ -33,6 +33,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'scope.workspace' => \App\Http\Middleware\ScopeWorkspace::class,
             'subuser.can' => \App\Http\Middleware\RequireSubUserPermission::class,
             'staff.only' => \App\Http\Middleware\StaffOnly::class,
+            'assistant.can' => \App\Http\Middleware\RequireAssistantPermission::class,
+            'not.assistant' => \App\Http\Middleware\NotAssistant::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

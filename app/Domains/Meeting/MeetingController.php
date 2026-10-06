@@ -25,7 +25,7 @@ class MeetingController extends Controller
         // matching comment on ContractController::allContracts.
         $perPage = max(1, min((int) $request->input('per_page', 30), 100));
         $meetings = Meeting::with('workspace.client', 'contract', 'approval')
-            ->when($user->isAccountManager(), fn($q) => $q->whereHas('workspace', fn($q) => $q->where('manager_id', $user->id)))
+            ->when(!$user->isSuperAdmin(), fn($q) => $q->whereHas('workspace', fn($q) => $q->where('manager_id', $user->ownerManagerId())))
             ->latest()
             ->paginate($perPage);
 
@@ -48,7 +48,7 @@ class MeetingController extends Controller
         // isSuperAdmin() method, so calling it on them directly (as this
         // used to) was a fatal error instead of a clean 403.
         $actor = $request->user();
-        if (!$actor instanceof User || (!$actor->isSuperAdmin() && $workspace->manager_id !== $actor->id)) {
+        if (!$actor instanceof User || (!$actor->isSuperAdmin() && $workspace->manager_id !== $actor->ownerManagerId())) {
             return response()->json(['message' => 'غير مصرح'], 403);
         }
 

@@ -58,11 +58,11 @@ Route::post('/webhooks/zoom', [ZoomWebhookController::class, 'handle']);
 // Dual-auth routes — allows both admin (sanctum) and client (client) guard
 Route::middleware(['auth.any:sanctum,client,sub_user', 'scope.workspace'])->group(function () {
     Route::get('/workspaces/{workspace}/chat', [ChatController::class, 'index']);
-    Route::post('/workspaces/{workspace}/chat', [ChatController::class, 'store'])->middleware('subuser.can:can_chat');
+    Route::post('/workspaces/{workspace}/chat', [ChatController::class, 'store'])->middleware(['subuser.can:can_chat', 'assistant.can:can_chat']);
     Route::post('/workspaces/{workspace}/chat/mark-read', [ChatController::class, 'markAsRead']);
-    Route::put('/chat/{chatMessage}', [ChatController::class, 'update']);
+    Route::put('/chat/{chatMessage}', [ChatController::class, 'update'])->middleware('assistant.can:can_chat');
     Route::patch('/chat/{chatMessage}/require-action', [ChatController::class, 'toggleRequireAction']);
-    Route::post('/chat/{chatMessage}/respond', [ChatController::class, 'respond'])->middleware('subuser.can:can_respond_approvals');
+    Route::post('/chat/{chatMessage}/respond', [ChatController::class, 'respond'])->middleware(['subuser.can:can_respond_approvals', 'assistant.can:can_chat']);
 
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
@@ -90,10 +90,10 @@ Route::middleware(['auth.any:sanctum,client,sub_user', 'scope.workspace'])->grou
 
     // Client-features — accessible by both client and manager
     Route::get('/workspaces/{workspace}/contracts', [ContractController::class, 'index']);
-    Route::get('/workspaces/{workspace}/payments', [PaymentController::class, 'index']);
-    Route::post('/workspaces/{workspace}/payments', [PaymentController::class, 'store'])->middleware('subuser.can:can_upload_payment_proof');
-    Route::put('/workspaces/{workspace}/payments/{payment}', [PaymentController::class, 'update'])->middleware('subuser.can:can_upload_payment_proof');
-    Route::get('/workspaces/{workspace}/payment-schedule', [PaymentController::class, 'getSchedule']);
+    Route::get('/workspaces/{workspace}/payments', [PaymentController::class, 'index'])->middleware('not.assistant');
+    Route::post('/workspaces/{workspace}/payments', [PaymentController::class, 'store'])->middleware(['subuser.can:can_upload_payment_proof', 'not.assistant']);
+    Route::put('/workspaces/{workspace}/payments/{payment}', [PaymentController::class, 'update'])->middleware(['subuser.can:can_upload_payment_proof', 'not.assistant']);
+    Route::get('/workspaces/{workspace}/payment-schedule', [PaymentController::class, 'getSchedule'])->middleware('not.assistant');
     Route::get('/workspaces/{workspace}/approvals', [ApprovalController::class, 'index']);
     // No subuser.can guard here: ApprovalPolicy::respond() already restricts
     // this action to staff (super admin / the workspace's manager) — a
@@ -101,15 +101,15 @@ Route::middleware(['auth.any:sanctum,client,sub_user', 'scope.workspace'])->grou
     // permission flag. The actual client/sub-user approval flow is
     // /chat/{chatMessage}/respond above, which is where can_respond_approvals
     // is enforced. See SUBUSER_PLAN.md §2.
-    Route::post('/approvals/{approval}/respond', [ApprovalController::class, 'respond']);
+    Route::post('/approvals/{approval}/respond', [ApprovalController::class, 'respond'])->middleware('not.assistant');
     Route::get('/workspaces/{workspace}/meetings', [MeetingController::class, 'index']);
 
     // Files — client needs to upload/download too
-    Route::get('/workspaces/{workspace}/files', [FileController::class, 'index']);
+    Route::get('/workspaces/{workspace}/files', [FileController::class, 'index'])->middleware('assistant.can:can_view_files');
     Route::post('/workspaces/{workspace}/files', [FileController::class, 'upload'])->middleware('subuser.can:can_upload_files');
     Route::delete('/workspaces/{workspace}/files/{file}', [FileController::class, 'destroy']);
     Route::get('/contracts/{contract}/required-documents', [ContractController::class, 'requiredDocuments']);
-    Route::get('/contracts/{contract}/files', [ContractController::class, 'files']);
+    Route::get('/contracts/{contract}/files', [ContractController::class, 'files'])->middleware('assistant.can:can_view_files');
 
     // Sub-users — accessible by admin, client, and sub_user
     Route::get('/sub-user-permissions', [SubUserController::class, 'permissionKeys']);
@@ -131,89 +131,89 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     Route::match(['put', 'post'], '/auth/me', [AuthController::class, 'updateProfile']);
 
     // Account Manager management (SuperAdmin only)
-    Route::get('/account-managers', [AccountManagerController::class, 'index']);
-    Route::get('/account-managers/{manager}', [AccountManagerController::class, 'show']);
-    Route::get('/account-managers/{manager}/stats', [AccountManagerController::class, 'stats']);
-    Route::post('/account-managers', [AccountManagerController::class, 'store']);
-    Route::put('/account-managers/{manager}', [AccountManagerController::class, 'update']);
+    Route::get('/account-managers', [AccountManagerController::class, 'index'])->middleware('not.assistant');
+    Route::get('/account-managers/{manager}', [AccountManagerController::class, 'show'])->middleware('not.assistant');
+    Route::get('/account-managers/{manager}/stats', [AccountManagerController::class, 'stats'])->middleware('not.assistant');
+    Route::post('/account-managers', [AccountManagerController::class, 'store'])->middleware('not.assistant');
+    Route::put('/account-managers/{manager}', [AccountManagerController::class, 'update'])->middleware('not.assistant');
     // No delete route: an account manager is never deleted — see
     // AccountManagerController for the reasoning (deleting a manager used
     // to cascade-delete every one of their clients, contracts, payments and
     // signatures). Deactivate/activate below is the replacement.
-    Route::post('/account-managers/{manager}/deactivate', [AccountManagerController::class, 'deactivate']);
-    Route::post('/account-managers/{manager}/activate', [AccountManagerController::class, 'activate']);
+    Route::post('/account-managers/{manager}/deactivate', [AccountManagerController::class, 'deactivate'])->middleware('not.assistant');
+    Route::post('/account-managers/{manager}/activate', [AccountManagerController::class, 'activate'])->middleware('not.assistant');
 
     // Clients
     Route::get('/clients', [ClientController::class, 'index']);
-    Route::post('/clients', [ClientController::class, 'store']);
-    Route::put('/clients/{client}', [ClientController::class, 'update']);
+    Route::post('/clients', [ClientController::class, 'store'])->middleware('not.assistant');
+    Route::put('/clients/{client}', [ClientController::class, 'update'])->middleware('assistant.can:can_edit_clients');
     // No delete route: see ClientController — same reasoning as managers
     // above, minus the cascade risk but with the same "gone forever" one.
-    Route::post('/clients/{client}/transfer', [ClientController::class, 'transfer']);
-    Route::post('/clients/{client}/archive', [ClientController::class, 'archive']);
-    Route::post('/clients/{client}/unarchive', [ClientController::class, 'unarchive']);
+    Route::post('/clients/{client}/transfer', [ClientController::class, 'transfer'])->middleware('not.assistant');
+    Route::post('/clients/{client}/archive', [ClientController::class, 'archive'])->middleware('not.assistant');
+    Route::post('/clients/{client}/unarchive', [ClientController::class, 'unarchive'])->middleware('not.assistant');
 
     // Client profile + location + activity (SuperAdmin / AccountManager)
     Route::get('/clients/{client}/profile', [ClientController::class, 'profile']);
-    Route::post('/clients/{client}/location', [ClientController::class, 'updateLocation']);
+    Route::post('/clients/{client}/location', [ClientController::class, 'updateLocation'])->middleware('assistant.can:can_edit_clients');
     Route::get('/clients/{client}/activity', [ClientController::class, 'activity']);
 
     // Workspace
-    Route::post('/workspaces', [WorkspaceController::class, 'store']);
-    Route::post('/workspaces/{workspace}/activate', [WorkspaceController::class, 'activate']);
+    Route::post('/workspaces', [WorkspaceController::class, 'store'])->middleware('not.assistant');
+    Route::post('/workspaces/{workspace}/activate', [WorkspaceController::class, 'activate'])->middleware('not.assistant');
 
     // All contracts/meetings/payments/files (cross-workspace)
     Route::get('/all-contracts', [ContractController::class, 'allContracts']);
     Route::get('/all-meetings', [MeetingController::class, 'allMeetings']);
-    Route::get('/all-payments', [PaymentController::class, 'allPayments']);
-    Route::get('/all-files', [FileController::class, 'allFiles']);
+    Route::get('/all-payments', [PaymentController::class, 'allPayments'])->middleware('not.assistant');
+    Route::get('/all-files', [FileController::class, 'allFiles'])->middleware('assistant.can:can_view_files');
 
     // Contracts
-    Route::post('/workspaces/{workspace}/contracts', [ContractController::class, 'store']);
+    Route::post('/workspaces/{workspace}/contracts', [ContractController::class, 'store'])->middleware('assistant.can:can_manage_contracts');
     Route::get('/contracts/{contract}', [ContractController::class, 'show']);
-    Route::put('/contracts/{contract}', [ContractController::class, 'update']);
-    Route::delete('/contracts/{contract}', [ContractController::class, 'destroy']);
-    Route::post('/contracts/{contract}/send', [ContractController::class, 'send']);
+    Route::put('/contracts/{contract}', [ContractController::class, 'update'])->middleware('assistant.can:can_manage_contracts');
+    Route::delete('/contracts/{contract}', [ContractController::class, 'destroy'])->middleware('assistant.can:can_manage_contracts');
+    Route::post('/contracts/{contract}/send', [ContractController::class, 'send'])->middleware('assistant.can:can_manage_contracts');
     Route::post('/contracts/{contract}/client-action', [ContractController::class, 'clientAction'])->middleware('subuser.can:can_approve_contracts');
-    Route::post('/contracts/{contract}/company-approve', [ContractController::class, 'companyApprove']);
-    Route::post('/contracts/{contract}/complete', [ContractController::class, 'complete']);
-    Route::post('/contracts/{contract}/archive', [ContractController::class, 'archive']);
-    Route::post('/contracts/{contract}/clauses', [ContractController::class, 'addClause']);
-    Route::put('/contracts/{contract}/clauses/{clause}', [ContractController::class, 'updateClause']);
-    Route::delete('/contracts/{contract}/clauses/{clause}', [ContractController::class, 'destroyClause']);
+    Route::post('/contracts/{contract}/company-approve', [ContractController::class, 'companyApprove'])->middleware('not.assistant');
+    Route::post('/contracts/{contract}/complete', [ContractController::class, 'complete'])->middleware('not.assistant');
+    Route::post('/contracts/{contract}/archive', [ContractController::class, 'archive'])->middleware('not.assistant');
+    Route::post('/contracts/{contract}/clauses', [ContractController::class, 'addClause'])->middleware('assistant.can:can_manage_contracts');
+    Route::put('/contracts/{contract}/clauses/{clause}', [ContractController::class, 'updateClause'])->middleware('assistant.can:can_manage_contracts');
+    Route::delete('/contracts/{contract}/clauses/{clause}', [ContractController::class, 'destroyClause'])->middleware('assistant.can:can_manage_contracts');
 
     // Payments
-    Route::post('/payments/{payment}/review', [PaymentController::class, 'review']);
-    Route::get('/payments/pending', [PaymentController::class, 'pending']);
-    Route::post('/workspaces/{workspace}/payments/schedule', [PaymentController::class, 'schedule']);
-    Route::post('/workspaces/{workspace}/payments/request', [PaymentController::class, 'requestPayment']);
-    Route::put('/payments/{payment}/schedule', [PaymentController::class, 'updateSchedule']);
-    Route::delete('/payments/{payment}/schedule', [PaymentController::class, 'deleteSchedule']);
+    Route::post('/payments/{payment}/review', [PaymentController::class, 'review'])->middleware('not.assistant');
+    Route::get('/payments/pending', [PaymentController::class, 'pending'])->middleware('not.assistant');
+    Route::post('/workspaces/{workspace}/payments/schedule', [PaymentController::class, 'schedule'])->middleware('not.assistant');
+    Route::post('/workspaces/{workspace}/payments/request', [PaymentController::class, 'requestPayment'])->middleware('not.assistant');
+    Route::put('/payments/{payment}/schedule', [PaymentController::class, 'updateSchedule'])->middleware('not.assistant');
+    Route::delete('/payments/{payment}/schedule', [PaymentController::class, 'deleteSchedule'])->middleware('not.assistant');
 
     // Approvals
     Route::get('/approvals/pending', [ApprovalController::class, 'pending']);
-    Route::post('/workspaces/{workspace}/approvals', [ApprovalController::class, 'store']);
+    Route::post('/workspaces/{workspace}/approvals', [ApprovalController::class, 'store'])->middleware('assistant.can:can_manage_approvals');
     Route::get('/approvals/{approval}', [ApprovalController::class, 'show']);
 
     // Meetings
-    Route::post('/workspaces/{workspace}/meetings', [MeetingController::class, 'store']);
-    Route::put('/workspaces/{workspace}/meetings/{meeting}', [MeetingController::class, 'update']);
-    Route::post('/meetings/{meeting}/enter', [MeetingController::class, 'enter']);
-    Route::patch('/meetings/{meeting}/complete', [MeetingController::class, 'complete']);
-    Route::patch('/meetings/{meeting}/cancel', [MeetingController::class, 'cancel']);
-    Route::delete('/workspaces/{workspace}/meetings/{meeting}', [MeetingController::class, 'destroy']);
+    Route::post('/workspaces/{workspace}/meetings', [MeetingController::class, 'store'])->middleware('assistant.can:can_manage_meetings');
+    Route::put('/workspaces/{workspace}/meetings/{meeting}', [MeetingController::class, 'update'])->middleware('assistant.can:can_manage_meetings');
+    Route::post('/meetings/{meeting}/enter', [MeetingController::class, 'enter'])->middleware('assistant.can:can_manage_meetings');
+    Route::patch('/meetings/{meeting}/complete', [MeetingController::class, 'complete'])->middleware('assistant.can:can_manage_meetings');
+    Route::patch('/meetings/{meeting}/cancel', [MeetingController::class, 'cancel'])->middleware('assistant.can:can_manage_meetings');
+    Route::delete('/workspaces/{workspace}/meetings/{meeting}', [MeetingController::class, 'destroy'])->middleware('assistant.can:can_manage_meetings');
 
     // Files — review + definitions (admin only)
-    Route::post('/files/{file}/review', [FileController::class, 'review']);
-    Route::post('/workspaces/{workspace}/document-definitions', [FileController::class, 'storeDefinition']);
-    Route::delete('/workspaces/{workspace}/document-definitions/{documentDefinition}', [FileController::class, 'destroyDefinition']);
+    Route::post('/files/{file}/review', [FileController::class, 'review'])->middleware('assistant.can:can_review_files');
+    Route::post('/workspaces/{workspace}/document-definitions', [FileController::class, 'storeDefinition'])->middleware('not.assistant');
+    Route::delete('/workspaces/{workspace}/document-definitions/{documentDefinition}', [FileController::class, 'destroyDefinition'])->middleware('not.assistant');
 
     // Contract Clause Templates
-    Route::get('/contract-clause-templates', [ContractController::class, 'templates']);
-    Route::post('/contract-clause-templates', [ContractController::class, 'storeTemplate']);
-    Route::put('/contract-clause-templates/{template}', [ContractController::class, 'updateTemplate']);
-    Route::delete('/contract-clause-templates/{template}', [ContractController::class, 'destroyTemplate']);
-    Route::post('/contract-clause-templates/reorder', [ContractController::class, 'reorderTemplates']);
+    Route::get('/contract-clause-templates', [ContractController::class, 'templates'])->middleware('assistant.can:can_manage_contracts');
+    Route::post('/contract-clause-templates', [ContractController::class, 'storeTemplate'])->middleware('not.assistant');
+    Route::put('/contract-clause-templates/{template}', [ContractController::class, 'updateTemplate'])->middleware('not.assistant');
+    Route::delete('/contract-clause-templates/{template}', [ContractController::class, 'destroyTemplate'])->middleware('not.assistant');
+    Route::post('/contract-clause-templates/reorder', [ContractController::class, 'reorderTemplates'])->middleware('not.assistant');
 
     // Users list (for filters). staff.only because this group is NOT
     // staff-only despite its name — see the middleware's docblock. Without
@@ -221,8 +221,14 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     // any authenticated client or sub-user token: it never touches
     // $request->user(), so unlike the two below it didn't even fail loudly,
     // it just answered.
-    Route::get('/users', function () {
-        return \App\Models\User::select('id', 'name', 'email')->get();
+    // Super admins and account managers keep the full directory (the
+    // dashboard's filters need names); any other staff role gets just
+    // itself, so a new role never inherits the whole staff list.
+    Route::get('/users', function (\Illuminate\Http\Request $request) {
+        $user = $request->user();
+        return \App\Models\User::select('id', 'name', 'email')
+            ->when(!$user->isSuperAdmin() && !$user->isAccountManager(), fn ($q) => $q->where('id', $user->id))
+            ->get();
     })->middleware('staff.only');
 
     // Audit & Reports. Both call $user->isAccountManager() to scope their
@@ -231,8 +237,8 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     // "not an account manager" branch treats the caller as a super admin,
     // i.e. hands over the entire unscoped audit log. staff.only is what
     // actually keeps non-staff out; the scoping below it is not a gate.
-    Route::get('/audit-logs', [AuditController::class, 'index'])->middleware('staff.only');
-    Route::get('/reports', [AuditController::class, 'reports'])->middleware('staff.only');
+    Route::get('/audit-logs', [AuditController::class, 'index'])->middleware(['staff.only', 'not.assistant']);
+    Route::get('/reports', [AuditController::class, 'reports'])->middleware(['staff.only', 'not.assistant']);
 
     // Server-computed dashboard cards (server-side-stats-plan.md). Same
     // gate as /reports, for the same reason: it calls isAccountManager()
@@ -248,16 +254,16 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     // migration. staff.only for the same reason as the two above; the
     // per-manager scoping inside the controller narrows staff against each
     // other and is not the gate.
-    Route::get('/login-attempts', [LoginAttemptController::class, 'index'])->middleware('staff.only');
+    Route::get('/login-attempts', [LoginAttemptController::class, 'index'])->middleware(['staff.only', 'not.assistant']);
 
     // Notifications
-    Route::post('/notifications/send-fcm', [NotificationController::class, 'sendFcm']);
+    Route::post('/notifications/send-fcm', [NotificationController::class, 'sendFcm'])->middleware('not.assistant');
 
     // System Settings. Reads are open to any authenticated user — the mobile
     // contract builder and the dashboard both need show_contract_dates, not
     // just SAs. Only update() is SA-gated (it checks isSuperAdmin itself and
     // whitelists the allowed keys).
     Route::get('/settings', [SettingsController::class, 'index']);
-    Route::put('/settings', [SettingsController::class, 'update']);
-    Route::get('/settings/tax-summary/{workspace}', [SettingsController::class, 'getTaxSummary']);
+    Route::put('/settings', [SettingsController::class, 'update'])->middleware('not.assistant');
+    Route::get('/settings/tax-summary/{workspace}', [SettingsController::class, 'getTaxSummary'])->middleware('not.assistant');
 });
