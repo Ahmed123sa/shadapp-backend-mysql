@@ -18,6 +18,7 @@ use App\Domains\Audit\AuditController;
 use App\Domains\Audit\LoginAttemptController;
 use App\Domains\Notification\NotificationController;
 use App\Domains\SubUser\SubUserController;
+use App\Domains\Team\TeamController;
 use App\Domains\Dashboard\DashboardController;
 use App\Domains\Settings\SettingsController;
 use App\Http\Controllers\ZoomWebhookController;
@@ -143,6 +144,17 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     Route::post('/account-managers/{manager}/deactivate', [AccountManagerController::class, 'deactivate'])->middleware('not.assistant');
     Route::post('/account-managers/{manager}/activate', [AccountManagerController::class, 'activate'])->middleware('not.assistant');
 
+    // My assistants (account manager only — TeamController refuses everyone
+    // else, super admin included; see MANAGER_ASSISTANT_PLAN.md ق١/ق٩).
+    Route::get('/assistant-permissions', [TeamController::class, 'permissionKeys']);
+    Route::get('/team', [TeamController::class, 'index']);
+    Route::post('/team', [TeamController::class, 'store']);
+    Route::put('/team/{assistant}', [TeamController::class, 'update']);
+    Route::post('/team/{assistant}/deactivate', [TeamController::class, 'deactivate']);
+    Route::post('/team/{assistant}/activate', [TeamController::class, 'activate']);
+    Route::patch('/team/{assistant}/password', [TeamController::class, 'changePassword']);
+    Route::get('/team/{assistant}/activity', [TeamController::class, 'activity']);
+
     // Clients
     Route::get('/clients', [ClientController::class, 'index']);
     Route::post('/clients', [ClientController::class, 'store'])->middleware('not.assistant');
@@ -228,6 +240,13 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
         $user = $request->user();
         return \App\Models\User::select('id', 'name', 'email')
             ->when(!$user->isSuperAdmin() && !$user->isAccountManager(), fn ($q) => $q->where('id', $user->id))
+            // Assistants are the manager's business: the super admin never
+            // sees them here, and a manager sees only their own.
+            ->when($user->isSuperAdmin(), fn ($q) => $q->where('role', '!=', \App\Models\User::ROLE_MANAGER_ASSISTANT))
+            ->when($user->isAccountManager(), fn ($q) => $q->where(function ($w) use ($user) {
+                $w->where('role', '!=', \App\Models\User::ROLE_MANAGER_ASSISTANT)
+                  ->orWhere('parent_manager_id', $user->id);
+            }))
             ->get();
     })->middleware('staff.only');
 

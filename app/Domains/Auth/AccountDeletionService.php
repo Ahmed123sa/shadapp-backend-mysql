@@ -137,14 +137,51 @@ class AccountDeletionService
 
     private function deleteStaff(User $user, Request $request): void
     {
-        $oldEmail = $user->email;
-        $oldAvatar = $user->getRawOriginal('avatar_url');
-
         // Captured before the scrub: afterwards the name is a placeholder.
         $displayName = $user->name;
         $clientCount = Client::where('manager_id', $user->id)
             ->where('status', '!=', 'deleted')
             ->count();
+
+        // A manager's assistants are scrubbed with them: they work under that
+        // manager and must not outlive the account (plan §4.6).
+        $assistantCount = 0;
+        foreach ($user->assistants()->get() as $assistant) {
+            $this->scrubStaff($assistant);
+            $assistantCount++;
+        }
+
+        $this->scrubStaff($user);
+
+        AuditLog::create([
+            'auditable_type' => User::class,
+            'auditable_id' => $user->id,
+            'client_id' => null,
+            'user_id' => $user->id,
+            'action' => 'account.deleted',
+            'metadata' => [
+                'account_type' => $user->isAssistant() ? 'manager_assistant' : 'account_manager',
+                'clients_needing_transfer' => $clientCount,
+                'assistants_removed' => $assistantCount,
+            ],
+            'ip_address' => $request->ip(),
+        ]);
+
+        if ($clientCount > 0) {
+            $admins = User::where('role', User::ROLE_SUPER_ADMIN)->get();
+            Notification::send($admins, new ManagerAccountDeletedNotification($displayName, $clientCount));
+        }
+    }
+
+    /**
+     * Anonymises one staff row (manager or assistant): footprint purged,
+     * personal data wiped, left deactivated so every "active staff" query
+     * skips it.
+     */
+    private function scrubStaff(User $user): void
+    {
+        $oldEmail = $user->email;
+        $oldAvatar = $user->getRawOriginal('avatar_url');
 
         $this->purgeFootprint($user);
 
@@ -159,29 +196,13 @@ class AccountDeletionService
             'signed_at' => null,
             'avatar_url' => null,
             'date_of_birth' => null,
-            // Same state the existing deactivate flow produces, so every
-            // "active managers only" picker/notification query skips them.
+            // Same state the existing deactivate flow produces.
             'is_active' => false,
             'deactivated_at' => now(),
         ])->save();
 
         $this->deleteAvatarFile($oldAvatar);
         $this->forgetPasswordResets($oldEmail);
-
-        AuditLog::create([
-            'auditable_type' => User::class,
-            'auditable_id' => $user->id,
-            'client_id' => null,
-            'user_id' => $user->id,
-            'action' => 'account.deleted',
-            'metadata' => ['account_type' => 'account_manager', 'clients_needing_transfer' => $clientCount],
-            'ip_address' => $request->ip(),
-        ]);
-
-        if ($clientCount > 0) {
-            $admins = User::where('role', User::ROLE_SUPER_ADMIN)->get();
-            Notification::send($admins, new ManagerAccountDeletedNotification($displayName, $clientCount));
-        }
     }
 
     /**

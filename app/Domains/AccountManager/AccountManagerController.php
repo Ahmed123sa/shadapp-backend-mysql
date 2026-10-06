@@ -257,6 +257,19 @@ class AccountManagerController extends Controller
         // every device, mobile included, immediately.
         $manager->tokens()->delete();
 
+        // Assistants go down with their manager (plan ق٨). Only the ones that
+        // were still on are flagged deactivated_by_parent, so reactivating the
+        // manager restores exactly those and not the ones the manager had
+        // switched off himself. Every assistant loses its sessions.
+        $manager->assistants()->where('is_active', true)->update([
+            'is_active' => false,
+            'deactivated_at' => now(),
+            'deactivated_by_parent' => true,
+        ]);
+        foreach ($manager->assistants()->get() as $assistant) {
+            $assistant->tokens()->delete();
+        }
+
         AuditLog::create([
             'auditable_type' => User::class,
             'auditable_id' => $manager->id,
@@ -281,6 +294,12 @@ class AccountManagerController extends Controller
         $manager->update([
             'is_active' => true,
             'deactivated_at' => null,
+        ]);
+
+        $manager->assistants()->where('deactivated_by_parent', true)->update([
+            'is_active' => true,
+            'deactivated_at' => null,
+            'deactivated_by_parent' => false,
         ]);
 
         AuditLog::create([
