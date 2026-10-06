@@ -123,6 +123,92 @@ class ManagerAssistantTeamTest extends TestCase
         $this->assertSame(2, User::where('parent_manager_id', $this->manager->id)->count());
     }
 
+    public function test_removing_an_assistant_is_a_soft_removal_that_keeps_their_name(): void
+    {
+        $assistant = $this->assistantOf($this->manager, ['name' => 'Sami Helper', 'email' => 'sami@example.com']);
+        $assistant->createToken('t');
+        Sanctum::actingAs($this->manager);
+
+        $this->deleteJson("/api/team/{$assistant->id}")->assertOk();
+
+        $fresh = User::find($assistant->id);
+        $this->assertNotNull($fresh);                       // row kept
+        $this->assertSame('Sami Helper', $fresh->name);     // name kept for the audit log
+        $this->assertNotNull($fresh->removed_at);
+        $this->assertFalse((bool) $fresh->is_active);
+        $this->assertNotSame('sami@example.com', $fresh->email);
+        $this->assertSame(0, $fresh->tokens()->count());
+    }
+
+    public function test_a_removed_assistant_is_gone_from_the_team_and_cannot_log_in(): void
+    {
+        $assistant = $this->assistantOf($this->manager, ['email' => 'sami@example.com', 'password' => 'Password123']);
+        Sanctum::actingAs($this->manager);
+        $this->deleteJson("/api/team/{$assistant->id}")->assertOk();
+
+        $this->getJson('/api/team')->assertOk()->assertJsonCount(0, 'assistants');
+
+        $this->app['auth']->forgetGuards();
+        $this->postJson('/api/auth/login', ['email' => 'sami@example.com', 'password' => 'Password123'])->assertStatus(422);
+    }
+
+    public function test_a_removed_assistants_email_can_be_used_again_and_the_slot_is_freed(): void
+    {
+        config(['team.max_assistants' => 1]);
+        $assistant = $this->assistantOf($this->manager, ['email' => 'sami@example.com']);
+        Sanctum::actingAs($this->manager);
+
+        $this->postJson('/api/team', $this->payload(['email' => 'new@example.com']))->assertUnprocessable()->assertJsonValidationErrors('limit');
+
+        $this->deleteJson("/api/team/{$assistant->id}")->assertOk();
+
+        $this->postJson('/api/team', $this->payload(['email' => 'sami@example.com']))->assertCreated();
+    }
+
+    public function test_the_audit_log_still_names_a_removed_assistant(): void
+    {
+        $assistant = $this->assistantOf($this->manager, ['name' => 'Sami Helper']);
+        AuditLog::create([
+            'auditable_type' => User::class, 'auditable_id' => $assistant->id, 'user_id' => $assistant->id,
+            'action' => 'contract.sent', 'ip_address' => '127.0.0.1',
+        ]);
+        Sanctum::actingAs($this->manager);
+        $this->deleteJson("/api/team/{$assistant->id}")->assertOk();
+
+        $rows = $this->getJson('/api/audit-logs')->assertOk()->json('logs.data');
+        $mine = collect($rows)->firstWhere('action', 'contract.sent');
+
+        $this->assertSame('Sami Helper', $mine['user']['name']);
+        $this->assertSame($this->manager->name, $mine['user']['assistant_of']);
+        $this->assertTrue(collect($rows)->contains('action', 'team.assistant_removed'));
+    }
+
+    public function test_only_the_owning_manager_can_remove_an_assistant_and_only_once(): void
+    {
+        $assistant = $this->assistantOf($this->manager);
+
+        Sanctum::actingAs($this->otherManager);
+        $this->deleteJson("/api/team/{$assistant->id}")->assertNotFound();
+
+        Sanctum::actingAs($this->superAdmin);
+        $this->deleteJson("/api/team/{$assistant->id}")->assertForbidden();
+
+        Sanctum::actingAs($this->manager);
+        $this->deleteJson("/api/team/{$assistant->id}")->assertOk();
+        $this->deleteJson("/api/team/{$assistant->id}")->assertNotFound();
+        $this->postJson("/api/team/{$assistant->id}/activate")->assertNotFound();
+        $this->patchJson("/api/team/{$assistant->id}/password", ['password' => 'NewPassword1'])->assertNotFound();
+    }
+
+    public function test_an_assistant_cannot_remove_anyone(): void
+    {
+        $assistant = $this->assistantOf($this->manager);
+        $other = $this->assistantOf($this->manager);
+        Sanctum::actingAs($assistant);
+
+        $this->deleteJson("/api/team/{$other->id}")->assertForbidden();
+    }
+
     public function test_a_manager_lists_only_their_own_assistants(): void
     {
         $mine = $this->assistantOf($this->manager);

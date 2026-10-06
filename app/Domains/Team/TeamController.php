@@ -35,7 +35,7 @@ class TeamController extends Controller
     {
         $manager = $this->manager($request);
 
-        $assistants = $manager->assistants()->oldest()->orderBy('id')->get();
+        $assistants = $manager->assistants()->whereNull('removed_at')->oldest()->orderBy('id')->get();
 
         return response()->json(['assistants' => $assistants->map(fn (User $a) => $this->shape($a))->values()]);
     }
@@ -55,7 +55,7 @@ class TeamController extends Controller
             'send_email' => 'sometimes|boolean',
         ]);
 
-        if ($manager->assistants()->count() >= (int) config('team.max_assistants', 10)) {
+        if ($manager->assistants()->whereNull('removed_at')->count() >= (int) config('team.max_assistants', 10)) {
             throw ValidationException::withMessages([
                 'limit' => 'وصلت للحد الأقصى لعدد المساعدين (' . config('team.max_assistants', 10) . ').',
             ]);
@@ -157,6 +157,41 @@ class TeamController extends Controller
         return response()->json(['assistant' => $this->shape($assistant->fresh())]);
     }
 
+    /**
+     * Soft removal. The row is kept, with its real name, so the audit log and
+     * the team chat still say who did what; everything that lets the person
+     * in or reach them is cut: sessions, push tokens, notifications, login
+     * email (freed for reuse) and password. Irreversible from the UI.
+     */
+    public function destroy(Request $request, User $assistant): JsonResponse
+    {
+        $this->ownAssistant($request, $assistant);
+
+        DB::transaction(function () use ($assistant, $request) {
+            $originalEmail = $assistant->email;
+
+            $assistant->tokens()->delete();
+            \App\Models\MobileNotificationToken::where('tokenable_type', $assistant::class)
+                ->where('tokenable_id', $assistant->getKey())
+                ->delete();
+            $assistant->notifications()->delete();
+
+            $assistant->forceFill([
+                'email' => 'removed-assistant-' . $assistant->id . '-' . \Illuminate\Support\Str::lower(\Illuminate\Support\Str::random(8)) . '@removed.invalid',
+                'password' => \Illuminate\Support\Str::random(48),
+                'remember_token' => null,
+                'is_active' => false,
+                'deactivated_by_parent' => false,
+                'deactivated_at' => $assistant->deactivated_at ?? now(),
+                'removed_at' => now(),
+            ])->save();
+
+            $this->audit($request, $assistant, 'team.assistant_removed', ['name' => $assistant->name, 'email' => $originalEmail]);
+        });
+
+        return response()->json(['message' => 'تم مسح المساعد.']);
+    }
+
     public function changePassword(Request $request, User $assistant): JsonResponse
     {
         $this->ownAssistant($request, $assistant);
@@ -215,7 +250,9 @@ class TeamController extends Controller
         $manager = $this->manager($request);
 
         abort_unless(
-            $assistant->isAssistant() && (int) $assistant->parent_manager_id === (int) $manager->id,
+            $assistant->isAssistant()
+                && (int) $assistant->parent_manager_id === (int) $manager->id
+                && $assistant->removed_at === null,
             404
         );
     }

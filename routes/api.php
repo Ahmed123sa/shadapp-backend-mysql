@@ -153,6 +153,7 @@ Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
     Route::post('/team/{assistant}/deactivate', [TeamController::class, 'deactivate']);
     Route::post('/team/{assistant}/activate', [TeamController::class, 'activate']);
     Route::patch('/team/{assistant}/password', [TeamController::class, 'changePassword']);
+    Route::delete('/team/{assistant}', [TeamController::class, 'destroy']);
     Route::get('/team/{assistant}/activity', [TeamController::class, 'activity']);
 
     // Clients
