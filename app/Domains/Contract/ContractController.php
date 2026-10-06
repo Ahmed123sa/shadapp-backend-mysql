@@ -178,7 +178,13 @@ class ContractController extends Controller
 
         $contract = $workspace->contracts()->create([
             'title' => $request->title,
-            'contract_type' => $request->contract_type ?? 'main',
+            // An active workspace means onboarding is done, so anything added
+            // now is an extra service. Decided here rather than trusted from
+            // the caller: the dashboard's chat "send extra contract" builder
+            // never sent contract_type at all, so those were stored as 'main'.
+            'contract_type' => $workspace->status === 'active'
+                ? 'additional'
+                : ($request->contract_type ?? 'main'),
             'value' => $request->value ?? 0,
             'currency' => $request->currency ?? 'SAR',
             'start_date' => $request->start_date,
