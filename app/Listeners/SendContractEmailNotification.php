@@ -80,7 +80,7 @@ class SendContractEmailNotification
     {
         $contract = $event->contract;
         $client = $contract->workspace->client;
-        $manager = $contract->creator;
+        $manager = $contract->creator?->responsibleManager();
         // Unlike workspace->manager, creator is fixed history — it doesn't
         // move on transfer — so it genuinely can point at a manager who's
         // since been deactivated (created the contract, client was later
@@ -122,7 +122,7 @@ class SendContractEmailNotification
     public function handleClientApproved(ContractClientApproved $event): void
     {
         $contract = $event->contract;
-        $manager = $contract->creator;
+        $manager = $contract->creator?->responsibleManager();
         if ($manager && !$manager->isActive()) {
             $manager = null;
         }
@@ -204,7 +204,7 @@ class SendContractEmailNotification
     {
         $contract = $event->contract;
         $client = $contract->workspace->client;
-        $manager = $contract->creator;
+        $manager = $contract->creator?->responsibleManager();
         if ($manager && !$manager->isActive()) {
             $manager = null;
         }

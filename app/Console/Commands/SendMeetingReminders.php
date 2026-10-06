@@ -21,7 +21,9 @@ class SendMeetingReminders extends Command
         $sent = 0;
 
         foreach ($meetings as $meeting) {
-            $creator = $meeting->creator;
+            // An assistant who created the meeting is reached through the
+            // manager's fan-out below, not directly.
+            $creator = $meeting->creator?->responsibleManager();
             // created_by is fixed history — it can point at a manager
             // deactivated after the client moved to someone else via
             // transfer. A deactivated account shouldn't get reminders.

@@ -14,7 +14,7 @@ class SendApprovalEmailNotification
     {
         $approval = $event->approval;
         $workspace = $approval->workspace;
-        $requester = $approval->requester;
+        $requester = $approval->requester?->responsibleManager();
         $client = $workspace?->client;
         // requested_by is fixed history like contracts.created_by — it can
         // legitimately point at a manager deactivated after the client was

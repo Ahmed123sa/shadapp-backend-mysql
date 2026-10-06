@@ -49,7 +49,7 @@ class ContractPdfService
         $currencyLabel = $currencyMap[$currency] ?? $currency;
 
         $companySignature = $bothSignatures
-            ? ($contract->company_signature_data ?? ($contract->creator?->name ?? 'تم الاعتماد'))
+            ? ($contract->company_signature_data ?? ($contract->creator?->responsibleManager()->name ?? 'تم الاعتماد'))
             : null;
         $isCompanyImage = SignatureValue::isImage($companySignature);
         $companyImagePath = SignatureValue::diskPath($companySignature);
@@ -57,7 +57,7 @@ class ContractPdfService
         $html = view('pdf.contract', [
             'contract' => $contract,
             'client' => $client,
-            'manager' => $contract->creator,
+            'manager' => $contract->creator?->responsibleManager(),
             'clientSignature' => $clientSignature,
             'clientSignatureIsImage' => $isImage,
             'clientImagePath' => $clientImagePath,

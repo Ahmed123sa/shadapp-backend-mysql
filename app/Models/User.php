@@ -94,6 +94,94 @@ class User extends Authenticatable
         return $this->role === self::ROLE_MANAGER_ASSISTANT;
     }
 
+    /**
+     * Who the company-facing side of an action belongs to. Things an
+     * assistant creates (a contract, a meeting, an approval request) keep the
+     * assistant in created_by for the audit trail, but the manager is the
+     * accountable party: emails, the contract PDF and "who do I tell" lookups
+     * must resolve to the manager, not to the assistant (assistants get no
+     * emails, and a contract is not made out to an assistant).
+     */
+    public function responsibleManager(): User
+    {
+        if ($this->isAssistant() && $this->parent_manager_id) {
+            return $this->parentManager ?? $this;
+        }
+
+        return $this;
+    }
+
+    /**
+     * Whether an assistant may see a notification of this type (the same
+     * `type` value as toDatabase()['type'], see SubUser::canSeeNotificationType).
+     * Payments and anything money-related never reach an assistant; the rest
+     * follow the manage-permission of the area. Everyone who is not an
+     * assistant sees everything, as before.
+     */
+    public function canSeeNotificationType(?string $type): bool
+    {
+        if (! $this->isAssistant() || $type === null) {
+            return true;
+        }
+        if (str_starts_with($type, 'payment') || $type === 'workspace_activated') {
+            return false;
+        }
+        if ($type === 'manager_account_deleted') {
+            return false;
+        }
+        if ($type === 'chat') {
+            return $this->assistantCan('can_chat');
+        }
+        if (str_starts_with($type, 'contract')) {
+            return $this->assistantCan('can_manage_contracts');
+        }
+        if (str_starts_with($type, 'meeting')) {
+            return $this->assistantCan('can_manage_meetings');
+        }
+        if (str_starts_with($type, 'approval')) {
+            return $this->assistantCan('can_manage_approvals');
+        }
+
+        return true;
+    }
+
+    /**
+     * Every call site notifies "the workspace's manager" with
+     * $manager->notify(...). Rather than touch each one, a manager's
+     * notification is also delivered to their active assistants who may see
+     * that type (database row, push and live broadcast, each assistant on
+     * their own account). Never fans out from or to anything else.
+     */
+    public function notify($instance)
+    {
+        app(\Illuminate\Contracts\Notifications\Dispatcher::class)->send($this, $instance);
+
+        $this->notifyAssistants($instance);
+    }
+
+    private function notifyAssistants($instance): void
+    {
+        if (! $this->isAccountManager() || ! $instance instanceof \App\Notifications\BaseNotification) {
+            return;
+        }
+
+        try {
+            $type = method_exists($instance, 'toDatabase') ? ($instance->toDatabase($this)['type'] ?? null) : null;
+
+            $recipients = $this->assistants()->get()
+                ->filter(fn (User $a) => $a->isActive() && $a->canSeeNotificationType($type))
+                ->values();
+
+            if ($recipients->isNotEmpty()) {
+                app(\Illuminate\Contracts\Notifications\Dispatcher::class)->send($recipients, $instance);
+            }
+        } catch (\Throwable $e) {
+            // The manager has already been notified; never let the extra
+            // delivery break the action that triggered it.
+            \Illuminate\Support\Facades\Log::warning('Assistant notification fan-out failed: ' . $e->getMessage());
+        }
+    }
+
     public function parentManager(): BelongsTo
     {
         return $this->belongsTo(User::class, 'parent_manager_id');

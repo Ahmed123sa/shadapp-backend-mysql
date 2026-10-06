@@ -178,6 +178,15 @@ class NotificationController extends Controller
             })->values();
         }
 
+        // An assistant keeps no payment/finance notifications, and only the
+        // areas their manager still allows (also covers rows stored before a
+        // permission was taken away).
+        if ($authUser instanceof User && $authUser->isAssistant()) {
+            $allNotifications = $allNotifications
+                ->filter(fn ($n) => $authUser->canSeeNotificationType($n->data['type'] ?? null))
+                ->values();
+        }
+
         $unreadCount = $allNotifications->whereNull('read_at')->count();
 
         $unreadClientIds = collect();
@@ -208,7 +217,10 @@ class NotificationController extends Controller
         $subUser = $authUser instanceof SubUser ? $authUser : null;
         $user = $subUser ? $subUser->client : $authUser;
         $notification = $user?->notifications()->where('id', $id)->first();
-        if ($notification && (!$subUser || $subUser->canSeeNotificationType($notification->data['type'] ?? null))) {
+        $canSee = $subUser
+            ? $subUser->canSeeNotificationType($notification?->data['type'] ?? null)
+            : ($authUser instanceof User ? $authUser->canSeeNotificationType($notification?->data['type'] ?? null) : true);
+        if ($notification && $canSee) {
             $notification->markAsRead();
         }
         return response()->json(['message' => 'done']);
@@ -228,6 +240,12 @@ class NotificationController extends Controller
             // who was never shown them in the first place.
             foreach ($user?->unreadNotifications ?? collect() as $notification) {
                 if ($subUser->canSeeNotificationType($notification->data['type'] ?? null)) {
+                    $notification->markAsRead();
+                }
+            }
+        } elseif ($authUser instanceof User && $authUser->isAssistant()) {
+            foreach ($user?->unreadNotifications ?? collect() as $notification) {
+                if ($authUser->canSeeNotificationType($notification->data['type'] ?? null)) {
                     $notification->markAsRead();
                 }
             }

@@ -12,7 +12,7 @@ class AuditController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = AuditLog::with('user', 'client', 'auditable');
+        $query = AuditLog::with('user.parentManager:id,name', 'client', 'auditable');
 
         if ($request->filled('action')) {
             $query->where('action', 'like', $request->action . '%');
@@ -39,13 +39,25 @@ class AuditController extends Controller
             $clientIds = \App\Models\Client::where('manager_id', $user->ownerManagerId())->pluck('id');
             $query->where(function ($q) use ($user, $clientIds) {
                 $q->where('user_id', $user->id)
+                  // what this manager's own assistants did
+                  ->orWhereIn('user_id', \App\Models\User::where('parent_manager_id', $user->ownerManagerId())->select('id'))
                   ->orWhereIn('client_id', $clientIds)
                   ->orWhereIn('auditable_id', $clientIds);
             });
         }
 
+        $logs = $query->latest()->paginate(25);
+
+        // "Sami (assistant of Ahmed)": an assistant's rows carry whose team
+        // they belong to, so the manager reading the log can tell.
+        $logs->getCollection()->each(function ($log) {
+            if ($log->user?->isAssistant()) {
+                $log->user->setAttribute('assistant_of', $log->user->parentManager?->name);
+            }
+        });
+
         return response()->json([
-            'logs' => $query->latest()->paginate(25),
+            'logs' => $logs,
         ]);
     }
 
