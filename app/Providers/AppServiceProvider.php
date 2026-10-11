@@ -19,7 +19,10 @@ use App\Listeners\SendApprovalEmailNotification;
 use App\Listeners\SendClientWelcomeEmail;
 use App\Models\Meeting;
 use App\Observers\MeetingObserver;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 
@@ -32,6 +35,17 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Per-account limit for every authenticated API route (11 Oct 2026,
+        // performance). Keyed by account *type* and id, because a staff user,
+        // a client and a sub-user live in different tables and can share the
+        // same numeric id. Falls back to the IP for anything unauthenticated.
+        RateLimiter::for('authenticated', function (Request $request) {
+            $account = $request->user();
+            $key = $account ? $account::class . ':' . $account->getKey() : 'ip:' . $request->ip();
+
+            return Limit::perMinute((int) config('app.api_rate_limit', 300))->by($key);
+        });
+
         // MySQL/MariaDB with utf8mb4 needs 4 bytes per character. A varchar(255)
         // unique/index column (e.g. users.email, clients.email) then requires a
         // key prefix longer than some MySQL/MariaDB builds allow, causing

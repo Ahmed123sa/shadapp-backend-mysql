@@ -68,6 +68,16 @@ return [
     'frontend_url' => env('FRONTEND_URL', 'http://localhost:3000'),
 
     /*
+    | Requests per minute one signed-in account may make to the API (the
+    | 'authenticated' rate limiter in AppServiceProvider). Deliberately
+    | generous: the dashboard fires ~8 requests on its home screen plus
+    | polling, and a busy user clicking around must never hit it. It only
+    | exists to stop one runaway client (a loop, a script) from flooding
+    | the server. Login/reset/support keep their own much stricter limits.
+    */
+    'api_rate_limit' => (int) env('API_RATE_LIMIT', 300),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------

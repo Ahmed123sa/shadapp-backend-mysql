@@ -57,7 +57,7 @@ Route::post('/auth/client/reset-password', [PasswordResetController::class, 'res
 Route::post('/webhooks/zoom', [ZoomWebhookController::class, 'handle']);
 
 // Dual-auth routes — allows both admin (sanctum) and client (client) guard
-Route::middleware(['auth.any:sanctum,client,sub_user', 'scope.workspace'])->group(function () {
+Route::middleware(['auth.any:sanctum,client,sub_user', 'throttle:authenticated', 'scope.workspace'])->group(function () {
     Route::get('/workspaces/{workspace}/chat', [ChatController::class, 'index']);
     Route::post('/workspaces/{workspace}/chat', [ChatController::class, 'store'])->middleware(['subuser.can:can_chat', 'assistant.can:can_chat']);
     Route::post('/workspaces/{workspace}/chat/mark-read', [ChatController::class, 'markAsRead']);
@@ -124,7 +124,7 @@ Route::middleware(['auth.any:sanctum,client,sub_user', 'scope.workspace'])->grou
 });
 
 // Authenticated routes (Dashboard - SuperAdmin / AccountManager)
-Route::middleware(['auth:sanctum', 'scope.workspace'])->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:authenticated', 'scope.workspace'])->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/sign', [AuthController::class, 'sign']);
