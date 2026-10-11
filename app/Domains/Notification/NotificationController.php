@@ -109,31 +109,137 @@ class NotificationController extends Controller
         }
     }
 
+    /** How many notifications the list returns (unchanged from before). */
+    private const LIST_LIMIT = 50;
+
+    /** Read notifications are pulled in pages of this size until the list is full. */
+    private const READ_CHUNK = 100;
+
     public function index(Request $request): JsonResponse
     {
         $authUser = $request->user();
         $subUser = $authUser instanceof SubUser ? $authUser : null;
         $user = $subUser ? $subUser->client : $authUser;
 
-        $allNotifications = $user?->notifications()->latest()->get() ?? collect();
-
-        if ($subUser) {
-            $allNotifications = $allNotifications
-                ->filter(fn ($n) => $subUser->canSeeNotificationType($n->data['type'] ?? null))
-                ->values();
+        if (!$user) {
+            return response()->json(['notifications' => [], 'unread_count' => 0, 'unread_clients_count' => 0]);
         }
 
-        // ن13 — resolves every contract/payment/approval a notification
-        // points at to its workspace_id in three batched whereIn() queries,
-        // instead of a Contract::find()/Payment::find()/Approval::find() per
-        // notification (and the AM filter below and the unread-clients-count
-        // loop after it used to each run that N+1 separately — twice the
-        // cost for nothing, since the answer for a given id never changes
-        // within one request).
+        // 11 Oct 2026 (performance) — this used to load EVERY notification
+        // the user ever had into memory on each call (the web polls it every
+        // 60 s) and filter them in PHP. The result is unchanged, but now:
+        //  - unread ones are all loaded (they are what the counts are made
+        //    of, and there are few of them), and
+        //  - read ones are pulled newest first, a page at a time, only until
+        //    there are enough visible ones to fill the list.
+        // The newest LIST_LIMIT visible notifications are always within
+        // "all visible unread" + "the newest LIST_LIMIT visible read", so the
+        // list returned is exactly what the old code returned.
+        $filter = $this->visibilityFilter($authUser, $subUser);
+
+        $unread = $filter($user->notifications()->whereNull('read_at')->latest()->get());
+
+        $read = collect();
+        $offset = 0;
+        while ($read->count() < self::LIST_LIMIT) {
+            $page = $user->notifications()->whereNotNull('read_at')->latest()
+                ->skip($offset)->take(self::READ_CHUNK)->get();
+            if ($page->isEmpty()) {
+                break;
+            }
+            $read = $read->concat($filter($page));
+            $offset += self::READ_CHUNK;
+            if ($page->count() < self::READ_CHUNK) {
+                break;
+            }
+        }
+
+        $notifications = $unread->concat($read)
+            ->sortByDesc(fn ($n) => $n->created_at?->getTimestamp() ?? 0)
+            ->take(self::LIST_LIMIT)
+            ->values();
+
+        $workspaceIdsNeeded = [];
+        $resolve = $this->workspaceResolver($unread);
+        foreach ($unread as $n) {
+            $workspaceId = $resolve($n->data ?? []);
+            if ($workspaceId) $workspaceIdsNeeded[] = $workspaceId;
+        }
+        $unreadClientsCount = $workspaceIdsNeeded
+            ? Workspace::whereIn('id', array_unique($workspaceIdsNeeded))->pluck('client_id')->unique()->count()
+            : 0;
+
+        return response()->json([
+            'notifications' => $notifications,
+            'unread_count' => $unread->count(),
+            'unread_clients_count' => $unreadClientsCount,
+        ]);
+    }
+
+    /**
+     * Who may see which stored notification — the same rules index() always
+     * applied, now as a reusable filter so it can run on one batch at a time:
+     * a sub-user only sees types its permissions allow; any non-super-admin
+     * staff (manager or assistant) only sees notifications about their own
+     * manager's clients; an assistant additionally never sees payment types.
+     *
+     * @return \Closure(\Illuminate\Support\Collection): \Illuminate\Support\Collection
+     */
+    private function visibilityFilter($authUser, ?SubUser $subUser): \Closure
+    {
+        $workspaceIds = null;
+        $clientIds = null;
+        if ($authUser instanceof User && !$authUser->isSuperAdmin()) {
+            $managedClients = Client::where('manager_id', $authUser->ownerManagerId())->with('workspace')->get();
+            $workspaceIds = $managedClients->pluck('workspace.id')->filter()->all();
+            // ن3 — reminders stored before they carried workspace_id still
+            // have client_id, so fall back to it.
+            $clientIds = $managedClients->pluck('id')->all();
+        }
+
+        return function ($batch) use ($authUser, $subUser, $workspaceIds, $clientIds) {
+            if ($subUser) {
+                $batch = $batch->filter(fn ($n) => $subUser->canSeeNotificationType($n->data['type'] ?? null));
+            }
+
+            if ($workspaceIds !== null) {
+                $resolve = $this->workspaceResolver($batch);
+                $batch = $batch->filter(function ($n) use ($workspaceIds, $clientIds, $resolve) {
+                    $data = $n->data ?? [];
+                    $workspaceId = $resolve($data);
+                    if ($workspaceId !== null) {
+                        return in_array($workspaceId, $workspaceIds);
+                    }
+                    if (isset($data['client_id'])) {
+                        return in_array($data['client_id'], $clientIds);
+                    }
+                    return false;
+                });
+            }
+
+            // An assistant keeps no payment/finance notifications, and only
+            // the areas their manager still allows.
+            if ($authUser instanceof User && $authUser->isAssistant()) {
+                $batch = $batch->filter(fn ($n) => $authUser->canSeeNotificationType($n->data['type'] ?? null));
+            }
+
+            return $batch->values();
+        };
+    }
+
+    /**
+     * ن13 — maps a notification's contract/payment/approval id to its
+     * workspace in three batched whereIn() queries for the whole batch,
+     * instead of one find() per notification.
+     *
+     * @return \Closure(array): mixed
+     */
+    private function workspaceResolver($batch): \Closure
+    {
         $contractIds = [];
         $paymentIds = [];
         $approvalIds = [];
-        foreach ($allNotifications as $n) {
+        foreach ($batch as $n) {
             $data = $n->data ?? [];
             if (isset($data['contract_id'])) $contractIds[] = $data['contract_id'];
             if (isset($data['payment_id'])) $paymentIds[] = $data['payment_id'];
@@ -143,72 +249,13 @@ class NotificationController extends Controller
         $paymentWorkspaces = $paymentIds ? Payment::whereIn('id', array_unique($paymentIds))->pluck('workspace_id', 'id') : collect();
         $approvalWorkspaces = $approvalIds ? Approval::whereIn('id', array_unique($approvalIds))->pluck('workspace_id', 'id') : collect();
 
-        $resolveWorkspaceId = function (array $data) use ($contractWorkspaces, $paymentWorkspaces, $approvalWorkspaces) {
+        return function (array $data) use ($contractWorkspaces, $paymentWorkspaces, $approvalWorkspaces) {
             if (isset($data['workspace_id'])) return $data['workspace_id'];
             if (isset($data['contract_id'])) return $contractWorkspaces[$data['contract_id']] ?? null;
             if (isset($data['payment_id'])) return $paymentWorkspaces[$data['payment_id']] ?? null;
             if (isset($data['approval_id'])) return $approvalWorkspaces[$data['approval_id']] ?? null;
             return null;
         };
-
-        if ($authUser instanceof User && !$authUser->isSuperAdmin()) {
-            $managedClients = \App\Models\Client::where('manager_id', $authUser->ownerManagerId())->with('workspace')->get();
-            $workspaceIds = $managedClients->pluck('workspace.id')->filter()->toArray();
-            // ن3 — a manager's own birthday/meeting reminders had none of
-            // workspace_id/contract_id/payment_id/approval_id at all (only
-            // client_id, or nothing resolvable for meetings before today),
-            // so they silently vanished from this list even though the push
-            // notification for the same event reached the manager fine.
-            // New reminders now carry workspace_id directly (see
-            // BirthdayReminderNotification/MeetingReminderNotification), but
-            // this client_id fallback also recovers already-stored ones —
-            // BirthdayReminderNotification has always included client_id.
-            $clientIds = $managedClients->pluck('id')->toArray();
-
-            $allNotifications = $allNotifications->filter(function ($n) use ($workspaceIds, $clientIds, $resolveWorkspaceId) {
-                $data = $n->data ?? [];
-                $workspaceId = $resolveWorkspaceId($data);
-                if ($workspaceId !== null) {
-                    return in_array($workspaceId, $workspaceIds);
-                }
-                if (isset($data['client_id'])) {
-                    return in_array($data['client_id'], $clientIds);
-                }
-                return false;
-            })->values();
-        }
-
-        // An assistant keeps no payment/finance notifications, and only the
-        // areas their manager still allows (also covers rows stored before a
-        // permission was taken away).
-        if ($authUser instanceof User && $authUser->isAssistant()) {
-            $allNotifications = $allNotifications
-                ->filter(fn ($n) => $authUser->canSeeNotificationType($n->data['type'] ?? null))
-                ->values();
-        }
-
-        $unreadCount = $allNotifications->whereNull('read_at')->count();
-
-        $unreadClientIds = collect();
-        if ($unreadCount > 0) {
-            $workspaceIdsNeeded = [];
-            foreach ($allNotifications->whereNull('read_at') as $n) {
-                $workspaceId = $resolveWorkspaceId($n->data ?? []);
-                if ($workspaceId) $workspaceIdsNeeded[] = $workspaceId;
-            }
-            if ($workspaceIdsNeeded) {
-                $unreadClientIds = Workspace::whereIn('id', array_unique($workspaceIdsNeeded))->pluck('client_id');
-            }
-        }
-        $unreadClientsCount = $unreadClientIds->unique()->count();
-
-        $notifications = $allNotifications->take(50);
-
-        return response()->json([
-            'notifications' => $notifications,
-            'unread_count' => $unreadCount,
-            'unread_clients_count' => $unreadClientsCount,
-        ]);
     }
 
     public function markAsRead(Request $request, string $id): JsonResponse
