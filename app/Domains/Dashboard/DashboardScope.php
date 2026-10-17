@@ -122,7 +122,8 @@ class DashboardScope
             $q->where(function ($q) use ($user, $clientIds) {
                 $q->where('user_id', $user->id)
                   ->orWhereIn('client_id', $clientIds)
-                  ->orWhereIn('auditable_id', $clientIds);
+                  ->orWhere(fn ($w) => $w->where('auditable_type', Client::class)
+                      ->whereIn('auditable_id', $clientIds));
             });
         }
         if (!empty($filters['client_id'])) {

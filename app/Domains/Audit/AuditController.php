@@ -42,7 +42,11 @@ class AuditController extends Controller
                   // what this manager's own assistants did
                   ->orWhereIn('user_id', \App\Models\User::where('parent_manager_id', $user->ownerManagerId())->select('id'))
                   ->orWhereIn('client_id', $clientIds)
-                  ->orWhereIn('auditable_id', $clientIds);
+                  // Rows about the client record itself. auditable_id is only
+                  // meaningful together with auditable_type: ids from different
+                  // tables collide (client 5 vs approval 5 vs user 5).
+                  ->orWhere(fn ($w) => $w->where('auditable_type', \App\Models\Client::class)
+                      ->whereIn('auditable_id', $clientIds));
             });
         }
 
