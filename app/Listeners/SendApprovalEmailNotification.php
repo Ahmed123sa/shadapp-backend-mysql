@@ -51,5 +51,9 @@ class SendApprovalEmailNotification
                 Log::warning('Failed to send approval responded notification: ' . $e->getMessage());
             }
         }
+
+        // The staff assigned to this client see the answer too (the one who
+        // raised the request was told just above, so they are skipped).
+        \App\Support\StaffNotifier::approvalResponded($approval, $approval->requested_by ? (int) $approval->requested_by : null);
     }
 }

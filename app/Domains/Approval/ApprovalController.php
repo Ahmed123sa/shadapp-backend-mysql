@@ -111,6 +111,9 @@ class ApprovalController extends Controller
         AuditLog::create([
             'auditable_type' => Approval::class,
             'auditable_id' => $approval->id,
+            // So the client's own manager sees what staff raised on their
+            // client in the audit log.
+            'client_id' => $workspace->client_id,
             'user_id' => $request->user()->id,
             'action' => 'approval.created',
             'metadata' => ['reference_no' => $approval->reference_no],

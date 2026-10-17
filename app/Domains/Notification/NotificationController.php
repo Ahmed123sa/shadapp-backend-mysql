@@ -189,7 +189,13 @@ class NotificationController extends Controller
     {
         $workspaceIds = null;
         $clientIds = null;
-        if ($authUser instanceof User && !$authUser->isSuperAdmin()) {
+        if ($authUser instanceof User && $authUser->isStaffMember()) {
+            // Company staff: only notifications about clients they are
+            // assigned to right now (un-assigning hides the old ones too).
+            $assignedWorkspaces = $authUser->assignedWorkspaces()->get(['workspaces.id', 'workspaces.client_id']);
+            $workspaceIds = $assignedWorkspaces->pluck('id')->all();
+            $clientIds = $assignedWorkspaces->pluck('client_id')->all();
+        } elseif ($authUser instanceof User && !$authUser->isSuperAdmin()) {
             $managedClients = Client::where('manager_id', $authUser->ownerManagerId())->with('workspace')->get();
             $workspaceIds = $managedClients->pluck('workspace.id')->filter()->all();
             // ن3 — reminders stored before they carried workspace_id still
@@ -219,7 +225,7 @@ class NotificationController extends Controller
 
             // An assistant keeps no payment/finance notifications, and only
             // the areas their manager still allows.
-            if ($authUser instanceof User && $authUser->isAssistant()) {
+            if ($authUser instanceof User && ($authUser->isAssistant() || $authUser->isStaffMember())) {
                 $batch = $batch->filter(fn ($n) => $authUser->canSeeNotificationType($n->data['type'] ?? null));
             }
 
@@ -290,7 +296,7 @@ class NotificationController extends Controller
                     $notification->markAsRead();
                 }
             }
-        } elseif ($authUser instanceof User && $authUser->isAssistant()) {
+        } elseif ($authUser instanceof User && ($authUser->isAssistant() || $authUser->isStaffMember())) {
             foreach ($user?->unreadNotifications ?? collect() as $notification) {
                 if ($authUser->canSeeNotificationType($notification->data['type'] ?? null)) {
                     $notification->markAsRead();

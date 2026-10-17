@@ -38,6 +38,9 @@ class User extends Authenticatable
         'can_view_files', 'can_review_files', 'can_manage_approvals',
     ];
 
+    /** The notification types a company staff member may receive and read (see App\Support\StaffNotifier). */
+    public const STAFF_NOTIFICATION_TYPES = ['chat', 'approval_responded', 'meeting_reminder', 'staff_assigned'];
+
     protected $appends = ['signature_url'];
 
     /**
@@ -141,6 +144,13 @@ class User extends Authenticatable
      */
     public function canSeeNotificationType(?string $type): bool
     {
+        // Company staff see only conversation-side notifications; anything
+        // else (contracts, payments, files, birthdays — and any type added
+        // later) is closed to them unless listed here.
+        if ($this->isStaffMember()) {
+            return in_array($type, self::STAFF_NOTIFICATION_TYPES, true);
+        }
+
         if (! $this->isAssistant() || $type === null) {
             return true;
         }

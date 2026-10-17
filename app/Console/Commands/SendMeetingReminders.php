@@ -59,6 +59,9 @@ class SendMeetingReminders extends Command
                 $client->notify(new MeetingReminderNotification($meeting));
                 $sent++;
             }
+
+            // Staff assigned to this client get the reminder as well.
+            $sent += \App\Support\StaffNotifier::meetingReminder($meeting, [$creator?->id, $manager?->id]);
         }
 
         $this->info("Sent {$sent} meeting reminder(s).");

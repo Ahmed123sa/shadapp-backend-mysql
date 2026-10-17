@@ -60,6 +60,10 @@ class WorkspaceStaffController extends Controller
             return $attached;
         });
 
+        if ($newly) {
+            \App\Support\StaffNotifier::wasAssigned($workspace, $member);
+        }
+
         return response()->json(['staff' => $this->shape($member, true), 'changed' => $newly]);
     }
 

@@ -152,6 +152,12 @@ class ChatController extends Controller
             }
         }
 
+        // A client (or sub-user) wrote: the staff assigned to this client are
+        // told too, alongside the manager above.
+        if ($senderType === \App\Models\Client::class || $senderType === \App\Models\SubUser::class) {
+            \App\Support\StaffNotifier::chatMessage($message);
+        }
+
         return response()->json(['message' => $message->load('sender', 'replyTo.sender')], 201);
     }
 
