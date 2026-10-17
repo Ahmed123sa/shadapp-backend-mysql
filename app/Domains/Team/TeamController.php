@@ -238,6 +238,8 @@ class TeamController extends Controller
     /** Only an active-role account manager. 403 for everyone else, super admin included. */
     private function manager(Request $request): User
     {
+        abort_unless(config('team.assistants_enabled'), 403, 'ميزة المساعدين متوقفة حاليًا.');
+
         $user = $request->user();
         abort_unless($user instanceof User && $user->isAccountManager(), 403, 'غير مصرح');
 

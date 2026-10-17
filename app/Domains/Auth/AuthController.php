@@ -169,7 +169,10 @@ class AuthController extends Controller
             'token' => $token,
             'user' => array_merge(
                 ['id' => $user->id, 'name' => $user->name, 'email' => $user->email, 'role' => $user->role, 'avatar_url' => $user->avatar_url],
-                $user->isAccountManager() ? ['can_approve_contracts' => (bool) $user->can_approve_contracts] : [],
+                $user->isAccountManager() ? [
+                    'can_approve_contracts' => (bool) $user->can_approve_contracts,
+                    'team_assistants_enabled' => (bool) config('team.assistants_enabled'),
+                ] : [],
                 $user->isAssistant() ? ['assistant_permissions' => $user->assistantPermissionMap(), 'parent_manager_id' => $user->parent_manager_id] : [],
             ),
         ]);
@@ -310,6 +313,9 @@ class AuthController extends Controller
     {
         $user = $request->user();
         $data = $user->toArray();
+        if ($user->isAccountManager()) {
+            $data['team_assistants_enabled'] = (bool) config('team.assistants_enabled');
+        }
         if ($user->isAssistant()) {
             // Always the full map, so a permission the manager changed after
             // login shows up on the next refresh.

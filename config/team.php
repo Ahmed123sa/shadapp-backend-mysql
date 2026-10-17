@@ -9,4 +9,13 @@ return [
     */
     'max_assistants' => (int) env('TEAM_MAX_ASSISTANTS', 10),
 
+    /*
+    | Manager assistants are switched OFF (STAFF_TEAMS_PLAN.md §٣.٥): company
+    | staff members replace them. The code and any existing assistant rows are
+    | kept; set TEAM_ASSISTANTS_ENABLED=true to bring the feature back. While
+    | off: /team/* is refused, assistants cannot sign in and their existing
+    | sessions are refused.
+    */
+    'assistants_enabled' => (bool) env('TEAM_ASSISTANTS_ENABLED', false),
+
 ];

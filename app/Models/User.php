@@ -13,7 +13,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'phone', 'password', 'role', 'super_admin_id', 'official_email', 'signature_data', 'signed_at', 'avatar_url', 'date_of_birth', 'is_active', 'deactivated_at', 'parent_manager_id', 'assistant_permissions', 'deactivated_by_parent', 'removed_at', 'can_approve_contracts'])]
+#[Fillable(['name', 'email', 'phone', 'password', 'role', 'super_admin_id', 'official_email', 'signature_data', 'signed_at', 'avatar_url', 'date_of_birth', 'is_active', 'deactivated_at', 'parent_manager_id', 'assistant_permissions', 'deactivated_by_parent', 'removed_at', 'can_approve_contracts', 'archived_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -23,6 +23,8 @@ class User extends Authenticatable
     const ROLE_SUPER_ADMIN = 'super_admin';
     const ROLE_ACCOUNT_MANAGER = 'account_manager';
     const ROLE_MANAGER_ASSISTANT = 'manager_assistant';
+    /** A company employee (chat, approval requests, meetings) assigned to clients — STAFF_TEAMS_PLAN.md. */
+    const ROLE_STAFF_MEMBER = 'staff_member';
 
     /**
      * Single source for the permissions a manager can give an assistant
@@ -60,6 +62,7 @@ class User extends Authenticatable
             'assistant_permissions' => 'array',
             'deactivated_at' => 'datetime',
             'removed_at' => 'datetime',
+            'archived_at' => 'datetime',
             'can_approve_contracts' => 'boolean',
         ];
     }
@@ -105,6 +108,11 @@ class User extends Authenticatable
     public function isAssistant(): bool
     {
         return $this->role === self::ROLE_MANAGER_ASSISTANT;
+    }
+
+    public function isStaffMember(): bool
+    {
+        return $this->role === self::ROLE_STAFF_MEMBER;
     }
 
     /**
@@ -251,8 +259,16 @@ class User extends Authenticatable
     public function isActive(): bool
     {
         if ($this->isAssistant()) {
-            // Needs both: switched on itself AND its manager still active.
-            return (bool) $this->is_active && (bool) $this->parentManager?->is_active;
+            // The whole feature can be switched off (config/team.php); then
+            // nobody counts as an active assistant. Otherwise needs both:
+            // switched on itself AND its manager still active.
+            return config('team.assistants_enabled')
+                && (bool) $this->is_active
+                && (bool) $this->parentManager?->is_active;
+        }
+
+        if ($this->isStaffMember()) {
+            return (bool) $this->is_active && $this->archived_at === null;
         }
 
         return (bool) $this->is_active;

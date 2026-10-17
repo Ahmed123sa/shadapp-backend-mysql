@@ -35,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'staff.only' => \App\Http\Middleware\StaffOnly::class,
             'assistant.can' => \App\Http\Middleware\RequireAssistantPermission::class,
             'not.assistant' => \App\Http\Middleware\NotAssistant::class,
+            'restrict.roles' => \App\Http\Middleware\RestrictRoles::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -19,7 +19,7 @@ class BroadcastServiceProvider extends ServiceProvider
             // even ran. That cut sub-users out of realtime chat/payment
             // updates entirely despite them having permission to act on
             // their client's workspace everywhere else in the app.
-            'middleware' => ['auth.any:sanctum,client,sub_user'],
+            'middleware' => ['auth.any:sanctum,client,sub_user', 'restrict.roles'],
         ]);
 
         require base_path('routes/channels.php');

@@ -19,6 +19,7 @@ use App\Domains\Audit\LoginAttemptController;
 use App\Domains\Notification\NotificationController;
 use App\Domains\SubUser\SubUserController;
 use App\Domains\Team\TeamController;
+use App\Domains\Staff\StaffController;
 use App\Domains\Dashboard\DashboardController;
 use App\Domains\Settings\SettingsController;
 use App\Http\Controllers\ZoomWebhookController;
@@ -57,7 +58,7 @@ Route::post('/auth/client/reset-password', [PasswordResetController::class, 'res
 Route::post('/webhooks/zoom', [ZoomWebhookController::class, 'handle']);
 
 // Dual-auth routes — allows both admin (sanctum) and client (client) guard
-Route::middleware(['auth.any:sanctum,client,sub_user', 'throttle:authenticated', 'scope.workspace'])->group(function () {
+Route::middleware(['auth.any:sanctum,client,sub_user', 'restrict.roles', 'throttle:authenticated', 'scope.workspace'])->group(function () {
     Route::get('/workspaces/{workspace}/chat', [ChatController::class, 'index']);
     Route::post('/workspaces/{workspace}/chat', [ChatController::class, 'store'])->middleware(['subuser.can:can_chat', 'assistant.can:can_chat']);
     Route::post('/workspaces/{workspace}/chat/mark-read', [ChatController::class, 'markAsRead']);
@@ -124,7 +125,7 @@ Route::middleware(['auth.any:sanctum,client,sub_user', 'throttle:authenticated',
 });
 
 // Authenticated routes (Dashboard - SuperAdmin / AccountManager)
-Route::middleware(['auth:sanctum', 'throttle:authenticated', 'scope.workspace'])->group(function () {
+Route::middleware(['auth:sanctum', 'restrict.roles', 'throttle:authenticated', 'scope.workspace'])->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/sign', [AuthController::class, 'sign']);
@@ -143,6 +144,15 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated', 'scope.workspace'])
     // signatures). Deactivate/activate below is the replacement.
     Route::post('/account-managers/{manager}/deactivate', [AccountManagerController::class, 'deactivate'])->middleware('not.assistant');
     Route::post('/account-managers/{manager}/activate', [AccountManagerController::class, 'activate'])->middleware('not.assistant');
+
+    // Company staff members (super admin only — StaffController refuses
+    // everyone else). Archive instead of delete, by design.
+    Route::get('/company-staff', [StaffController::class, 'index'])->middleware('not.assistant');
+    Route::post('/company-staff', [StaffController::class, 'store'])->middleware('not.assistant');
+    Route::put('/company-staff/{member}', [StaffController::class, 'update'])->middleware('not.assistant');
+    Route::patch('/company-staff/{member}/password', [StaffController::class, 'changePassword'])->middleware('not.assistant');
+    Route::post('/company-staff/{member}/archive', [StaffController::class, 'archive'])->middleware('not.assistant');
+    Route::post('/company-staff/{member}/unarchive', [StaffController::class, 'unarchive'])->middleware('not.assistant');
 
     // My assistants (account manager only — TeamController refuses everyone
     // else, super admin included; see MANAGER_ASSISTANT_PLAN.md ق١/ق٩).
@@ -244,7 +254,7 @@ Route::middleware(['auth:sanctum', 'throttle:authenticated', 'scope.workspace'])
             // Assistants are the manager's business: the super admin never
             // sees them here, and a manager sees only their own.
             ->when($user->isSuperAdmin(), fn ($q) => $q->where('role', '!=', \App\Models\User::ROLE_MANAGER_ASSISTANT))
-            ->when($user->isAccountManager(), fn ($q) => $q->where(function ($w) use ($user) {
+            ->when($user->isAccountManager(), fn ($q) => $q->where('role', '!=', \App\Models\User::ROLE_STAFF_MEMBER)->where(function ($w) use ($user) {
                 $w->where('role', '!=', \App\Models\User::ROLE_MANAGER_ASSISTANT)
                   ->orWhere('parent_manager_id', $user->id);
             }))
