@@ -63,7 +63,18 @@ class ContractPolicy
 
     public function companyApprove($user, Contract $contract): bool
     {
-        return $user instanceof \App\Models\User && $user->isSuperAdmin();
+        if (!$user instanceof \App\Models\User) {
+            return false;
+        }
+        if ($user->isSuperAdmin()) {
+            return true;
+        }
+
+        // An account manager the super admin allowed, on their own clients only.
+        return $user->isAccountManager()
+            && $user->canApproveContracts()
+            && $user->isActive()
+            && (int) $contract->workspace->manager_id === (int) $user->id;
     }
 
     public function complete($user, Contract $contract): bool

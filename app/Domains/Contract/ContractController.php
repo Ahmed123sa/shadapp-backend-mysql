@@ -464,18 +464,28 @@ class ContractController extends Controller
             'use_saved_signature' => 'nullable|boolean',
         ]);
 
+        $approver = $request->user();
         $signature = null;
-        if ($request->boolean('use_saved_signature')) {
-            $signature = $request->user()->signature_data;
+        if (!$approver->isSuperAdmin()) {
+            // An account manager approving on the company's behalf always
+            // signs with the COMPANY signature — the super admin's saved one —
+            // never their own, and cannot supply one in the request. Same
+            // signature logic as before; only who is allowed to press the
+            // button changed (STAFF_TEAMS_PLAN.md §٣.٤).
+            $signature = $this->companySignature($approver);
+        } elseif ($request->boolean('use_saved_signature')) {
+            $signature = $approver->signature_data;
         } elseif ($request->filled('signature')) {
             $signature = $request->signature;
         } else {
-            $signature = $request->user()->signature_data;
+            $signature = $approver->signature_data;
         }
 
         if (empty($signature)) {
             return response()->json([
-                'message' => 'لازم توفر توقيع الشركة الأول قبل الاعتماد.',
+                'message' => $approver->isSuperAdmin()
+                    ? 'لازم توفر توقيع الشركة الأول قبل الاعتماد.'
+                    : 'توقيع الشركة مش محفوظ عند السوبر أدمن لسه — اطلب منه يحفظه الأول.',
                 'code' => 'signature_required',
             ], 422);
         }
@@ -516,10 +526,30 @@ class ContractController extends Controller
             'auditable_id' => $contract->id,
             'user_id' => $request->user()->id,
             'action' => 'contract.company_approved',
+            'metadata' => ['approved_by_role' => $approver->role],
             'ip_address' => $request->ip(),
         ]);
 
         return response()->json(['contract' => $contract->fresh()->load('workspace.payments')]);
+    }
+
+    /**
+     * The company signature an account manager approves with: the saved
+     * signature of the super admin who created that manager, or — if that
+     * one has none — of any super admin who has one saved.
+     */
+    private function companySignature(User $manager): ?string
+    {
+        $creator = $manager->super_admin_id ? User::find($manager->super_admin_id) : null;
+        if ($creator?->isSuperAdmin() && !empty($creator->signature_data)) {
+            return $creator->signature_data;
+        }
+
+        return User::where('role', User::ROLE_SUPER_ADMIN)
+            ->whereNotNull('signature_data')
+            ->where('signature_data', '!=', '')
+            ->orderBy('id')
+            ->value('signature_data');
     }
 
     public function complete(Request $request, Contract $contract): JsonResponse

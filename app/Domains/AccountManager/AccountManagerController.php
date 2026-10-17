@@ -203,6 +203,10 @@ class AccountManagerController extends Controller
         if ($request->filled('password')) {
             $data['password'] = $request->password;
         }
+        $approvalBefore = (bool) $manager->can_approve_contracts;
+        if ($request->has('can_approve_contracts')) {
+            $data['can_approve_contracts'] = $request->boolean('can_approve_contracts');
+        }
         $manager->update($data);
 
         AuditLog::create([
@@ -212,6 +216,20 @@ class AccountManagerController extends Controller
             'action' => 'account_manager.updated',
             'ip_address' => $request->ip(),
         ]);
+
+        // Granting/revoking contract approval is a permission change worth
+        // its own, searchable audit row.
+        if (array_key_exists('can_approve_contracts', $data) && $data['can_approve_contracts'] !== $approvalBefore) {
+            AuditLog::create([
+                'auditable_type' => User::class,
+                'auditable_id' => $manager->id,
+                'user_id' => $request->user()->id,
+                'action' => $data['can_approve_contracts']
+                    ? 'account_manager.contract_approval_granted'
+                    : 'account_manager.contract_approval_revoked',
+                'ip_address' => $request->ip(),
+            ]);
+        }
 
         return response()->json(['manager' => $manager->fresh()]);
     }

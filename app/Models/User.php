@@ -13,7 +13,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'phone', 'password', 'role', 'super_admin_id', 'official_email', 'signature_data', 'signed_at', 'avatar_url', 'date_of_birth', 'is_active', 'deactivated_at', 'parent_manager_id', 'assistant_permissions', 'deactivated_by_parent', 'removed_at'])]
+#[Fillable(['name', 'email', 'phone', 'password', 'role', 'super_admin_id', 'official_email', 'signature_data', 'signed_at', 'avatar_url', 'date_of_birth', 'is_active', 'deactivated_at', 'parent_manager_id', 'assistant_permissions', 'deactivated_by_parent', 'removed_at', 'can_approve_contracts'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -60,6 +60,7 @@ class User extends Authenticatable
             'assistant_permissions' => 'array',
             'deactivated_at' => 'datetime',
             'removed_at' => 'datetime',
+            'can_approve_contracts' => 'boolean',
         ];
     }
 
@@ -71,6 +72,17 @@ class User extends Authenticatable
     public function isAccountManager(): bool
     {
         return $this->role === self::ROLE_ACCOUNT_MANAGER;
+    }
+
+    /**
+     * Whether this user may company-approve contracts: the super admin
+     * always; an account manager only when the super admin switched it on
+     * for them (STAFF_TEAMS_PLAN.md §٣.٤). Ownership of the contract is
+     * checked separately in ContractPolicy.
+     */
+    public function canApproveContracts(): bool
+    {
+        return $this->isSuperAdmin() || ($this->isAccountManager() && (bool) $this->can_approve_contracts);
     }
 
     /**
