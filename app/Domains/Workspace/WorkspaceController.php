@@ -38,6 +38,32 @@ class WorkspaceController extends Controller
     {
         $this->authorize('view', $workspace);
 
+        // Company staff see the conversation side only: no contracts,
+        // payments or files, and no payment reminder.
+        $viewer = $request->user();
+        if ($viewer instanceof \App\Models\User && $viewer->isStaffMember()) {
+            $workspace->load(['client', 'manager:id,name,phone', 'approvals.certificate', 'meetings']);
+            $nextMeeting = Meeting::where('workspace_id', $workspace->id)
+                ->where('status', 'scheduled')
+                ->where('scheduled_at', '>', now())
+                ->orderBy('scheduled_at')
+                ->first();
+
+            return response()->json([
+                'workspace' => [
+                    'id' => $workspace->id,
+                    'client_id' => $workspace->client_id,
+                    'manager_id' => $workspace->manager_id,
+                    'status' => $workspace->status,
+                    'client' => $workspace->client?->staffCard(),
+                    'manager' => $workspace->manager,
+                    'approvals' => $workspace->approvals,
+                    'meetings' => $workspace->meetings,
+                ],
+                'nextMeeting' => $nextMeeting,
+            ]);
+        }
+
         $workspace->load([
             'client', 'manager', 'contracts.clauses', 'contracts.requiredDocuments', 'payments', 'approvals.certificate',
             'meetings', 'files', 'chatMessages.sender',

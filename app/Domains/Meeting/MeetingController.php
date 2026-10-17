@@ -233,6 +233,13 @@ class MeetingController extends Controller
             return response()->json(['as' => 'participant', 'url' => $meeting->link]);
         }
 
+        // Company staff always join as participants: they never claim the
+        // host slot, and the host start link (which controls the company's
+        // Zoom account) is never fetched for them.
+        if ($request->user()->isStaffMember()) {
+            return response()->json(['as' => 'participant', 'url' => $meeting->link]);
+        }
+
         $userId = $request->user()->id;
         $key = $meeting->hostCacheKey();
 

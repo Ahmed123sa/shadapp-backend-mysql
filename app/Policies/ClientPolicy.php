@@ -11,11 +11,15 @@ class ClientPolicy
 
     public function viewAny($user): bool
     {
-        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT]);
+        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT, \App\Models\User::ROLE_STAFF_MEMBER]);
     }
 
     public function view($user, Client $client): bool
     {
+        // Company staff: only clients they are assigned to.
+        if ($user instanceof \App\Models\User && $user->isStaffMember()) {
+            return (bool) $client->workspace?->hasStaffMember($user);
+        }
         if ($user instanceof \App\Models\Client && $user->id === $client->id) {
             return true;
         }

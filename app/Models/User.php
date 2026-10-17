@@ -228,6 +228,14 @@ class User extends Authenticatable
         return $map;
     }
 
+    /** The client workspaces a staff member is assigned to. */
+    public function assignedWorkspaces(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Workspace::class, 'workspace_staff')
+            ->withPivot('assigned_by')
+            ->withTimestamps();
+    }
+
     public function assistants(): HasMany
     {
         return $this->hasMany(User::class, 'parent_manager_id');

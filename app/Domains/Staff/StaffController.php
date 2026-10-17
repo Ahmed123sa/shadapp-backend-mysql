@@ -29,6 +29,7 @@ class StaffController extends Controller
         $this->superAdmin($request);
 
         $members = User::where('role', User::ROLE_STAFF_MEMBER)
+            ->withCount('assignedWorkspaces')
             ->when(! $request->boolean('include_archived'), fn ($q) => $q->whereNull('archived_at'))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $term = '%' . $request->q . '%';
@@ -202,6 +203,7 @@ class StaffController extends Controller
             'role' => $member->role,
             'is_active' => (bool) $member->is_active,
             'archived_at' => $member->archived_at,
+            'assigned_clients_count' => (int) ($member->assigned_workspaces_count ?? $member->assignedWorkspaces()->count()),
             'created_at' => $member->created_at,
         ];
     }

@@ -14,7 +14,7 @@ class ApprovalPolicy
     {
         if ($user instanceof \App\Models\Client) return true;
         if ($user instanceof SubUser) return true;
-        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT]);
+        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT, \App\Models\User::ROLE_STAFF_MEMBER]);
     }
 
     public function view($user, Approval $approval): bool
@@ -25,7 +25,9 @@ class ApprovalPolicy
     public function create($user): bool
     {
         return $user instanceof \App\Models\User
-            && (in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER])
+            // A staff member may raise a request; which workspace is limited
+            // by ScopeWorkspace (assignment) on the route.
+            && (in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_STAFF_MEMBER])
                 || ($user->isAssistant() && $user->assistantCan('can_manage_approvals')));
     }
 

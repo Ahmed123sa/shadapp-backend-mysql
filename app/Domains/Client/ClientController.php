@@ -24,6 +24,14 @@ class ClientController extends Controller
         $this->authorize('viewAny', Client::class);
 
         $user = $request->user();
+
+        // Company staff get their assigned clients only, and only the basic
+        // card — no contracts, payments, sub-users or contract value.
+        // viewAny above only lets a staff-side User through.
+        if ($user instanceof \App\Models\User && $user->isStaffMember()) {
+            return response()->json(['clients' => $this->assignedClientsFor($user, $request)]);
+        }
+
         $clients = Client::with('workspace', 'subUsers', 'payments')
             // 23 Sept 2026 — whether the client has approved a contract.
             // Mobile's client cards showed "Not contracted" from signed_at,
@@ -56,6 +64,24 @@ class ClientController extends Controller
             ->paginate(30);
 
         return response()->json(['clients' => $clients]);
+    }
+
+    /** The clients a staff member is assigned to (paginated like the normal list). */
+    private function assignedClientsFor($user, Request $request)
+    {
+        return Client::with('workspace')
+            ->whereHas('workspace.staff', fn ($q) => $q->where('users.id', $user->id))
+            ->when(! $request->boolean('include_archived'), fn ($q) => $q->where('status', '!=', 'archived'))
+            ->where('status', '!=', 'deleted')
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $search = $request->q;
+                $q->where(fn ($w) => $w->where('contact_person', 'like', "%{$search}%")
+                    ->orWhere('company_name', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%"));
+            })
+            ->latest()
+            ->paginate(30)
+            ->through(fn (Client $c) => $c->staffCard());
     }
 
     public function store(StoreClientRequest $request): JsonResponse
@@ -107,6 +133,12 @@ class ClientController extends Controller
     public function show(Request $request, Client $client): JsonResponse
     {
         $this->authorize('view', $client);
+
+        // Client and SubUser tokens reach this route too and have no such method.
+        $viewer = $request->user();
+        if ($viewer instanceof \App\Models\User && $viewer->isStaffMember()) {
+            return response()->json(['client' => $client->load('workspace.manager:id,name,phone')->staffCard()]);
+        }
 
         $client->load(
             'workspace.contracts',

@@ -46,6 +46,39 @@ class Client extends Authenticatable
     }
 
     /**
+     * What a company staff member may know about a client: who they are and
+     * how to reach them. Deliberately an allow-list — a field added to Client
+     * later is not shown to staff until someone adds it here. No contract
+     * value, notes, payments, signature or sub-users.
+     */
+    public function staffCard(): array
+    {
+        $workspace = $this->relationLoaded('workspace') ? $this->workspace : null;
+
+        return [
+            'id' => $this->id,
+            'uuid' => $this->uuid,
+            'company_name' => $this->company_name,
+            'contact_person' => $this->contact_person,
+            'email' => $this->email,
+            'phone' => $this->phone,
+            'client_type' => $this->client_type,
+            'status' => $this->status,
+            'avatar_url' => $this->avatar_url,
+            'country' => $this->country,
+            'industry' => $this->industry,
+            'workspace' => $workspace ? [
+                'id' => $workspace->id,
+                'status' => $workspace->status,
+                'manager_id' => $workspace->manager_id,
+                'manager' => $workspace->relationLoaded('manager') && $workspace->manager
+                    ? ['id' => $workspace->manager->id, 'name' => $workspace->manager->name]
+                    : null,
+            ] : null,
+        ];
+    }
+
+    /**
      * The dashboard shows this client's uuid in the browser URL instead of
      * its numeric id (see the 2026_09_07 migration for why). Everything that
      * already links or calls the API with the numeric id — the mobile app,

@@ -364,6 +364,12 @@ class ChatController extends Controller
             abort(403, 'غير مصرح لك بتعديل هذه الرسالة');
         }
 
+        // This route has no {workspace} for ScopeWorkspace to check, so being
+        // the original sender is not enough: someone removed from the
+        // conversation (a staff member un-assigned from the client) can no
+        // longer touch their old messages.
+        abort_unless($chatMessage->workspace->canBeAccessedBy($user), 403, 'غير مصرح لك بالوصول إلى مساحة العمل هذه');
+
         if ($chatMessage->approval_id || $chatMessage->type !== 'text') {
             abort(422, 'لا يمكن تعديل هذه الرسالة');
         }

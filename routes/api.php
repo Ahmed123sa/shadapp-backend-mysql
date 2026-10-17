@@ -20,6 +20,7 @@ use App\Domains\Notification\NotificationController;
 use App\Domains\SubUser\SubUserController;
 use App\Domains\Team\TeamController;
 use App\Domains\Staff\StaffController;
+use App\Domains\Staff\WorkspaceStaffController;
 use App\Domains\Dashboard\DashboardController;
 use App\Domains\Settings\SettingsController;
 use App\Http\Controllers\ZoomWebhookController;
@@ -153,6 +154,13 @@ Route::middleware(['auth:sanctum', 'restrict.roles', 'throttle:authenticated', '
     Route::patch('/company-staff/{member}/password', [StaffController::class, 'changePassword'])->middleware('not.assistant');
     Route::post('/company-staff/{member}/archive', [StaffController::class, 'archive'])->middleware('not.assistant');
     Route::post('/company-staff/{member}/unarchive', [StaffController::class, 'unarchive'])->middleware('not.assistant');
+    Route::get('/company-staff/{member}/clients', [WorkspaceStaffController::class, 'clientsOf'])->middleware('not.assistant');
+
+    // The "Team" tab inside a client's workspace: which staff work on this
+    // client. The workspace's own manager or the super admin only.
+    Route::get('/workspaces/{workspace}/staff', [WorkspaceStaffController::class, 'index'])->middleware('not.assistant');
+    Route::put('/workspaces/{workspace}/staff/{member}', [WorkspaceStaffController::class, 'assign'])->middleware('not.assistant');
+    Route::delete('/workspaces/{workspace}/staff/{member}', [WorkspaceStaffController::class, 'unassign'])->middleware('not.assistant');
 
     // My assistants (account manager only — TeamController refuses everyone
     // else, super admin included; see MANAGER_ASSISTANT_PLAN.md ق١/ق٩).

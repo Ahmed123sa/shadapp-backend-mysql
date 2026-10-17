@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\FileEntry;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
@@ -27,6 +28,26 @@ class Workspace extends Model
     public function manager(): BelongsTo
     {
         return $this->belongsTo(User::class, 'manager_id');
+    }
+
+    /** Company staff members assigned to this client (workspace_staff). */
+    public function staff(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'workspace_staff')
+            ->withPivot('assigned_by')
+            ->withTimestamps();
+    }
+
+    /**
+     * Whether this user is an active staff member assigned to the workspace.
+     * Un-assigning or archiving takes effect on the very next request.
+     */
+    public function hasStaffMember($user): bool
+    {
+        return $user instanceof User
+            && $user->isStaffMember()
+            && $user->isActive()
+            && $this->staff()->whereKey($user->getKey())->exists();
     }
 
     public function contracts(): HasMany
@@ -86,7 +107,10 @@ class Workspace extends Model
     public function canBeAccessedBy($user): bool
     {
         return match (true) {
-            $user instanceof User => $user->isSuperAdmin() || $this->manager_id === $user->ownerManagerId(),
+            $user instanceof User => $user->isSuperAdmin()
+                // A staff member's ownerManagerId() is their own id, which
+                // matches no workspace; they get in only through assignment.
+                || ($user->isStaffMember() ? $this->hasStaffMember($user) : $this->manager_id === $user->ownerManagerId()),
             $user instanceof Client => $this->client_id === $user->id,
             $user instanceof SubUser => $this->client_id === $user->client_id,
             default => false,

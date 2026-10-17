@@ -20,11 +20,15 @@ class MeetingPolicy
     {
         if ($user instanceof \App\Models\Client) return true;
         if ($user instanceof SubUser) return true;
-        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT]);
+        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT, \App\Models\User::ROLE_STAFF_MEMBER]);
     }
 
     public function view($user, Meeting $meeting): bool
     {
+        if ($user instanceof \App\Models\User && $user->isStaffMember()) {
+            return $meeting->workspace->hasStaffMember($user);
+        }
+
         $isClient = $user instanceof \App\Models\Client && $meeting->workspace->client_id === $user->id;
         $isSubUser = $user instanceof SubUser && $meeting->workspace->client_id === $user->client_id;
         $isManager = $user instanceof \App\Models\User && ($user->isSuperAdmin() || $meeting->workspace->manager_id === $user->ownerManagerId());
@@ -56,6 +60,12 @@ class MeetingPolicy
     // MeetingController::enter().
     public function host($user, Meeting $meeting): bool
     {
+        // Assigned staff may enter, but MeetingController::enter() only ever
+        // gives them the participant link — never the host start link.
+        if ($user instanceof \App\Models\User && $user->isStaffMember()) {
+            return $meeting->workspace->hasStaffMember($user);
+        }
+
         return $user instanceof \App\Models\User
             && ($user->isSuperAdmin() || ($meeting->workspace->manager_id === $user->ownerManagerId() && $user->assistantCan('can_manage_meetings')));
     }

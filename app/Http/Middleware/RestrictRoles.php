@@ -32,6 +32,28 @@ class RestrictRoles
         'api/notifications/*',
     ];
 
+    /**
+     * Routes a staff member may call, as "METHOD route-template" — matched on
+     * the exact registered template, so `api/clients/{client}` does not also
+     * open `api/clients/{client}/sub-users`. What they may touch inside these
+     * is limited to the clients they are assigned to (Workspace /
+     * ClientPolicy / MeetingPolicy). Chat, approval requests and meetings
+     * only — nothing about contracts, payments, files or settings.
+     */
+    public const ALLOWED_ROUTES = [
+        'GET api/clients',
+        'GET api/clients/{client}',
+        'GET api/workspaces/{workspace}',
+        'GET api/workspaces/{workspace}/chat',
+        'POST api/workspaces/{workspace}/chat',
+        'POST api/workspaces/{workspace}/chat/mark-read',
+        'PUT api/chat/{chatMessage}',
+        'GET api/workspaces/{workspace}/approvals',
+        'POST api/workspaces/{workspace}/approvals',
+        'GET api/workspaces/{workspace}/meetings',
+        'POST api/meetings/{meeting}/enter',
+    ];
+
     /** Inside an allowed pattern, but never for a staff member. */
     private const DENIED_PATHS = [
         'api/notifications/send-fcm',
@@ -57,6 +79,17 @@ class RestrictRoles
 
     private function allowed(Request $request): bool
     {
-        return $request->is(self::ALLOWED_PATHS) && ! $request->is(self::DENIED_PATHS);
+        if ($request->is(self::ALLOWED_PATHS) && ! $request->is(self::DENIED_PATHS)) {
+            return true;
+        }
+
+        $route = $request->route();
+        if (! $route) {
+            return false;
+        }
+
+        $method = $request->method() === 'HEAD' ? 'GET' : $request->method();
+
+        return in_array($method . ' ' . $route->uri(), self::ALLOWED_ROUTES, true);
     }
 }

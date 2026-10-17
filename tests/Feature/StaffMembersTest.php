@@ -319,7 +319,6 @@ class StaffMembersTest extends TestCase
     public static function closedRoutes(): array
     {
         return [
-            'clients list' => ['getJson', '/api/clients'],
             'create client' => ['postJson', '/api/clients'],
             'dashboard stats' => ['getJson', '/api/dashboard/stats'],
             'badge counts' => ['getJson', '/api/badge-counts'],
@@ -345,7 +344,7 @@ class StaffMembersTest extends TestCase
         $this->{$method}($path)->assertForbidden();
     }
 
-    public function test_a_staff_member_cannot_open_a_real_workspace_yet(): void
+    public function test_a_staff_member_cannot_open_a_workspace_they_are_not_assigned_to(): void
     {
         $client = Client::factory()->create(['manager_id' => $this->manager->id]);
         $workspace = \App\Models\Workspace::factory()->create(['client_id' => $client->id, 'manager_id' => $this->manager->id]);
