@@ -131,7 +131,20 @@ class FileController extends Controller
             && $file->workspace?->manager_id === $user->ownerManagerId()
             && $user->assistantCan('can_review_files');
 
-        if (! $user->isSuperAdmin() && ! $managerAllowed) {
+        // A manager the super admin allowed to approve contracts may also
+        // approve the documents attached to those contracts (the required
+        // documents the client uploads with it) on their own clients — the
+        // two permissions go together, otherwise they could not finish the
+        // approval they were trusted with. Other files still need the
+        // managers_can_review_files setting above.
+        $contractDocAllowed = $user instanceof \App\Models\User
+            && $user->canApproveContracts()
+            && $user->isActive()
+            && ! $user->isSuperAdmin()
+            && (int) $file->workspace?->manager_id === (int) $user->id
+            && ($file->contract_id !== null || $file->contract_required_document_id !== null);
+
+        if (! $user->isSuperAdmin() && ! $managerAllowed && ! $contractDocAllowed) {
             abort(403, 'Only Super Admin can review documents');
         }
 

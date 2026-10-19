@@ -118,4 +118,63 @@ class ManagerFileReviewSettingTest extends TestCase
 
         $response->assertStatus(403);
     }
+
+    private function contractDocumentFor(User $manager): FileEntry
+    {
+        $contract = \App\Models\Contract::factory()->create(['workspace_id' => $this->workspace->id]);
+
+        return FileEntry::create([
+            'workspace_id' => $this->workspace->id,
+            'contract_id' => $contract->id,
+            'uploaded_by_type' => Client::class,
+            'uploaded_by_id' => $this->client->id,
+            'file_url' => '/storage/contract-doc.pdf',
+            'name' => 'contract-doc.pdf',
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_manager_allowed_to_approve_contracts_can_review_that_contracts_documents_even_with_setting_off(): void
+    {
+        SystemSetting::setValue('managers_can_review_files', '0');
+        $this->manager->update(['can_approve_contracts' => true]);
+        $doc = $this->contractDocumentFor($this->manager);
+
+        $this->actingAs($this->manager->fresh())
+            ->postJson("/api/files/{$doc->id}/review", ['action' => 'approved'])
+            ->assertOk();
+
+        $this->assertEquals('approved', $doc->fresh()->status);
+    }
+
+    public function test_contract_approval_permission_does_not_open_ordinary_files(): void
+    {
+        SystemSetting::setValue('managers_can_review_files', '0');
+        $this->manager->update(['can_approve_contracts' => true]);
+
+        $this->actingAs($this->manager->fresh())
+            ->postJson("/api/files/{$this->fileEntry->id}/review", ['action' => 'approved'])
+            ->assertStatus(403);
+    }
+
+    public function test_manager_without_contract_approval_cannot_review_contract_documents_when_setting_off(): void
+    {
+        SystemSetting::setValue('managers_can_review_files', '0');
+        $doc = $this->contractDocumentFor($this->manager);
+
+        $this->actingAs($this->manager)
+            ->postJson("/api/files/{$doc->id}/review", ['action' => 'approved'])
+            ->assertStatus(403);
+    }
+
+    public function test_approving_manager_cannot_review_another_managers_contract_documents(): void
+    {
+        SystemSetting::setValue('managers_can_review_files', '0');
+        $this->otherManager->update(['can_approve_contracts' => true]);
+        $doc = $this->contractDocumentFor($this->manager);
+
+        $this->actingAs($this->otherManager->fresh())
+            ->postJson("/api/files/{$doc->id}/review", ['action' => 'approved'])
+            ->assertStatus(403);
+    }
 }
