@@ -29,8 +29,10 @@ use Carbon\Carbon;
 
 class PaymentController extends Controller
 {
-    const BUSINESS_METHODS = ['bank_transfer', 'swift', 'corporate_account'];
-    const INDIVIDUAL_METHODS = ['instapay', 'vodafone_cash', 'mobile_wallet'];
+    // Every client may pay any way — the client only uploads proof of the
+    // transfer (photo/receipt), so the method is informational. It used to be
+    // split by client type (business vs individual); that restriction is gone.
+    const ALL_METHODS = ['bank_transfer', 'swift', 'corporate_account', 'instapay', 'vodafone_cash', 'mobile_wallet', 'cheque'];
 
     public function allPayments(Request $request): JsonResponse
     {
@@ -131,7 +133,7 @@ class PaymentController extends Controller
         $this->authorize('viewAny', Payment::class);
 
         $client = $workspace->client;
-        $methods = $client->client_type === 'individual' ? self::INDIVIDUAL_METHODS : self::BUSINESS_METHODS;
+        $methods = self::ALL_METHODS;
 
         $contractsTotal = $workspace->contracts()
             ->whereIn('status', ['company_approved', 'completed'])
@@ -166,8 +168,6 @@ class PaymentController extends Controller
         if ($client?->isFrozen()) {
             return response()->json(['message' => 'العميل ده متأرشف، مينفعش تتضاف له دفعات جديدة. فُك الأرشفة الأول.'], 422);
         }
-
-        $methods = $client->client_type === 'individual' ? self::INDIVIDUAL_METHODS : self::BUSINESS_METHODS;
 
         $proofFileUrl = [];
         if ($request->hasFile('proof_files')) {
