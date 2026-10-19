@@ -35,6 +35,7 @@ class SubUserController extends Controller
             // in as that client.
             'email' => ['required', 'email', 'unique:sub_users', new UniqueLoginEmail()],
             'password' => 'required|string|min:8|regex:/[A-Za-z]/|regex:/[0-9]/',
+            'phone' => 'nullable|string|max:20',
             'date_of_birth' => 'nullable|date',
             'send_email' => 'sometimes|boolean',
         ]);
@@ -64,6 +65,7 @@ class SubUserController extends Controller
                 'email' => strtolower(trim($request->email)),
                 'password' => $request->password,
                 'permissions' => [],
+                'phone' => $request->phone,
                 'date_of_birth' => $request->date_of_birth,
             ]);
 

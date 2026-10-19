@@ -77,6 +77,44 @@ class SubUserTest extends TestCase
         ]);
     }
 
+    public function test_a_sub_user_can_be_created_with_a_phone_number(): void
+    {
+        [$client] = $this->makeClient();
+
+        $this->actingAs($client, 'client')
+            ->postJson("/api/clients/{$client->id}/sub-users", [
+                'name' => 'Accountant',
+                'email' => 'accountant@example.com',
+                'password' => 'Password1',
+                'phone' => '+20 100 123 4567',
+            ])->assertStatus(201);
+
+        $this->assertDatabaseHas('sub_users', [
+            'email' => 'accountant@example.com',
+            'phone' => '+20 100 123 4567',
+        ]);
+    }
+
+    public function test_a_sub_user_phone_is_optional_but_capped_at_20_characters(): void
+    {
+        [$client] = $this->makeClient();
+
+        $this->actingAs($client, 'client')
+            ->postJson("/api/clients/{$client->id}/sub-users", [
+                'name' => 'No Phone',
+                'email' => 'nophone@example.com',
+                'password' => 'Password1',
+            ])->assertStatus(201);
+
+        $this->actingAs($client, 'client')
+            ->postJson("/api/clients/{$client->id}/sub-users", [
+                'name' => 'Long Phone',
+                'email' => 'longphone@example.com',
+                'password' => 'Password1',
+                'phone' => str_repeat('1', 21),
+            ])->assertStatus(422)->assertJsonValidationErrors('phone');
+    }
+
     public function test_a_new_sub_user_starts_with_no_permissions(): void
     {
         [$client] = $this->makeClient();
