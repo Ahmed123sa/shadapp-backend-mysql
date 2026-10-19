@@ -19,7 +19,8 @@ class DatabaseSeeder extends Seeder
     {
         $superAdmin = User::create([
             'name' => 'CEO',
-            'email' => 'official@shadmanagement.co',
+            // Live address by default; override locally with SEED_ADMIN_EMAIL in .env (never commit a local value).
+            'email' => env('SEED_ADMIN_EMAIL', 'admin@shadapp.com'),
             'password' => 'password',
             'role' => User::ROLE_SUPER_ADMIN,
         ]);
@@ -158,7 +159,7 @@ class DatabaseSeeder extends Seeder
         SystemSetting::setValue('corporate_tax_percentage', 15, 'نسبة ضريبة الشركات المقدرة (%)');
 
         $this->command->info('Demo data seeded successfully!');
-        $this->command->info('Super Admin: official@shadmanagement.co / password');
+        $this->command->info('Super Admin: ' . $superAdmin->email . ' / password');
         // $this->command->info('Manager: manager@shadapp.com / password');
         // $this->command->info('Client: client@shadapp.com / password');
     }
