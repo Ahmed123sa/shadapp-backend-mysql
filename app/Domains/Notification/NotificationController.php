@@ -189,12 +189,21 @@ class NotificationController extends Controller
     {
         $workspaceIds = null;
         $clientIds = null;
+        // Company staff only: what they may view on each assigned client
+        // (workspace_staff.permissions, PLAN_2). Null for everyone else.
+        $staffPerms = null;
+        $staffWorkspaceByClient = [];
         if ($authUser instanceof User && $authUser->isStaffMember()) {
             // Company staff: only notifications about clients they are
             // assigned to right now (un-assigning hides the old ones too).
             $assignedWorkspaces = $authUser->assignedWorkspaces()->get(['workspaces.id', 'workspaces.client_id']);
             $workspaceIds = $assignedWorkspaces->pluck('id')->all();
             $clientIds = $assignedWorkspaces->pluck('client_id')->all();
+            $staffPerms = [];
+            foreach ($assignedWorkspaces as $w) {
+                $staffPerms[$w->id] = Workspace::decodeStaffPermissions($w->pivot?->permissions);
+                $staffWorkspaceByClient[$w->client_id] = $w->id;
+            }
         } elseif ($authUser instanceof User && !$authUser->isSuperAdmin()) {
             $managedClients = Client::where('manager_id', $authUser->ownerManagerId())->with('workspace')->get();
             $workspaceIds = $managedClients->pluck('workspace.id')->filter()->all();
@@ -203,7 +212,7 @@ class NotificationController extends Controller
             $clientIds = $managedClients->pluck('id')->all();
         }
 
-        return function ($batch) use ($authUser, $subUser, $workspaceIds, $clientIds) {
+        return function ($batch) use ($authUser, $subUser, $workspaceIds, $clientIds, $staffPerms, $staffWorkspaceByClient) {
             if ($subUser) {
                 $batch = $batch->filter(fn ($n) => $subUser->canSeeNotificationType($n->data['type'] ?? null));
             }
@@ -220,6 +229,28 @@ class NotificationController extends Controller
                         return in_array($data['client_id'], $clientIds);
                     }
                     return false;
+                });
+            }
+
+            // A staff member's notification follows what they may view on that
+            // client NOW: closing "view chat" hides the stored chat ones too.
+            // Being assigned is about the assignment itself, so it always stays.
+            if ($staffPerms !== null) {
+                $resolveStaff = $this->workspaceResolver($batch);
+                $batch = $batch->filter(function ($n) use ($staffPerms, $staffWorkspaceByClient, $resolveStaff) {
+                    $data = $n->data ?? [];
+                    $key = match (true) {
+                        ($data['type'] ?? null) === 'chat' => 'can_view_chat',
+                        str_starts_with((string) ($data['type'] ?? ''), 'approval') => 'can_view_approvals',
+                        str_starts_with((string) ($data['type'] ?? ''), 'meeting') => 'can_view_meetings',
+                        default => null,
+                    };
+                    if ($key === null) {
+                        return true;
+                    }
+                    $workspaceId = $resolveStaff($data) ?? ($staffWorkspaceByClient[$data['client_id'] ?? 0] ?? null);
+
+                    return $workspaceId !== null && ($staffPerms[$workspaceId][$key] ?? false);
                 });
             }
 

@@ -216,4 +216,40 @@ class StaffPermissionsEnforcementTest extends TestCase
         Notification::assertSentTo($this->manager, MeetingReminderNotification::class);
         Notification::assertNotSentTo($this->staff, MeetingReminderNotification::class);
     }
+
+    // ── the stored notifications follow the permissions as they are now ──
+
+    public function test_stored_notifications_follow_the_current_view_permissions(): void
+    {
+        $this->assignWithout(null);
+        \App\Support\StaffNotifier::wasAssigned($this->ws, $this->staff);
+        Sanctum::actingAs($this->client);
+        $this->postJson("/api/workspaces/{$this->ws->id}/chat", ['message' => 'hello'])->assertCreated();
+
+        Sanctum::actingAs($this->staff);
+        $types = fn () => collect($this->getJson('/api/notifications')->json('notifications'))->pluck('data.type')->sort()->values()->all();
+        $this->assertSame(['chat', 'staff_assigned'], $types());
+        $this->assertSame(2, $this->getJson('/api/notifications')->json('unread_count'));
+
+        // Closing "view chat" now hides the chat one, not the assignment one.
+        $this->assignWithout('can_view_chat');
+        $this->assertSame(['staff_assigned'], $types());
+        $this->assertSame(1, $this->getJson('/api/notifications')->json('unread_count'));
+    }
+
+    public function test_stored_notifications_are_filtered_per_client(): void
+    {
+        $this->assignWithout('can_view_chat');          // closed on this client…
+        $this->assignWithout(null, $this->otherWs);     // …open on the other one
+        Sanctum::actingAs($this->client);
+        $this->postJson("/api/workspaces/{$this->ws->id}/chat", ['message' => 'one'])->assertCreated();
+        $otherClient = $this->otherWs->client;
+        Sanctum::actingAs($otherClient);
+        $this->postJson("/api/workspaces/{$this->otherWs->id}/chat", ['message' => 'two'])->assertCreated();
+
+        Sanctum::actingAs($this->staff);
+        $rows = $this->getJson('/api/notifications')->json('notifications');
+        $this->assertCount(1, $rows);
+        $this->assertSame($this->otherWs->id, (int) $rows[0]['data']['workspace_id']);
+    }
 }
