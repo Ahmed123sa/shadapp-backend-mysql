@@ -32,6 +32,12 @@ class ContractPdfSignatureTest extends TestCase
     {
         parent::setUp();
 
+        // The PDF service writes contracts/contract-{id}-signed.pdf to the
+        // public disk. Without a fake disk this test (whose contract is id 1
+        // in the in-memory DB) overwrote the REAL contract-1 PDF in
+        // storage/app/public with this test's faker data.
+        Storage::fake('public');
+
         $this->manager = User::factory()->create([
             'role' => User::ROLE_ACCOUNT_MANAGER,
             'name' => 'Manager User',
