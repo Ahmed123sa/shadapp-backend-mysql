@@ -41,6 +41,51 @@ class User extends Authenticatable
     /** The notification types a company staff member may receive and read (see App\Support\StaffNotifier). */
     public const STAFF_NOTIFICATION_TYPES = ['chat', 'approval_responded', 'meeting_reminder', 'staff_assigned'];
 
+    /**
+     * Per-client capabilities of a company staff member (PLAN_2 §٣.٣). Stored
+     * on workspace_staff.permissions; null there = all of them.
+     */
+    public const STAFF_PERMISSION_KEYS = [
+        'can_view_chat', 'can_send_chat',
+        'can_view_approvals', 'can_request_approvals',
+        'can_view_meetings', 'can_join_meetings',
+    ];
+
+    /** action key => the "view" key it depends on (send ⇒ view). */
+    public const STAFF_PERMISSION_DEPENDS = [
+        'can_send_chat' => 'can_view_chat',
+        'can_request_approvals' => 'can_view_approvals',
+        'can_join_meetings' => 'can_view_meetings',
+    ];
+
+    /**
+     * Full {key: bool} map from a partial/arbitrary input: unknown keys are
+     * dropped, missing keys fall back to $base (default all true), and an
+     * action never stays on without its "view".
+     */
+    public static function staffPermissionMap(?array $input, ?array $base = null): array
+    {
+        $map = [];
+        foreach (self::STAFF_PERMISSION_KEYS as $key) {
+            $map[$key] = array_key_exists($key, $input ?? [])
+                ? (bool) $input[$key]
+                : (bool) ($base[$key] ?? true);
+        }
+        foreach (self::STAFF_PERMISSION_DEPENDS as $action => $view) {
+            if (! $map[$view]) {
+                $map[$action] = false;
+            }
+        }
+
+        return $map;
+    }
+
+    /** What gets stored: null when everything is allowed (the default), else the full map. */
+    public static function staffPermissionsForStorage(array $map): ?array
+    {
+        return in_array(false, $map, true) ? $map : null;
+    }
+
     protected $appends = ['signature_url'];
 
     /**
@@ -242,7 +287,22 @@ class User extends Authenticatable
     public function assignedWorkspaces(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
     {
         return $this->belongsToMany(Workspace::class, 'workspace_staff')
-            ->withPivot('assigned_by')
+            ->withPivot('assigned_by', 'permissions')
+            ->withTimestamps();
+    }
+
+    /** Staff members in this manager's team (manager_staff). */
+    public function managerTeam(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'manager_staff', 'manager_id', 'staff_id')
+            ->withPivot('added_by')
+            ->withTimestamps();
+    }
+
+    /** The managers whose team this staff member is in. */
+    public function staffManagers(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'manager_staff', 'staff_id', 'manager_id')
             ->withTimestamps();
     }
 

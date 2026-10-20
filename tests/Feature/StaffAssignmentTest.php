@@ -51,6 +51,8 @@ class StaffAssignmentTest extends TestCase
         $this->clientB = Client::factory()->create(['manager_id' => $this->managerB->id]);
         $this->wsA = Workspace::factory()->create(['client_id' => $this->clientA->id, 'manager_id' => $this->managerA->id, 'status' => 'active']);
         $this->wsB = Workspace::factory()->create(['client_id' => $this->clientB->id, 'manager_id' => $this->managerB->id, 'status' => 'active']);
+        // A manager assigns from his own team only (PLAN_2 ق٧).
+        $this->managerA->managerTeam()->attach([$this->staff->id, $this->otherStaff->id]);
     }
 
     private function member(string $name): User

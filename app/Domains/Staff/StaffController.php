@@ -30,6 +30,7 @@ class StaffController extends Controller
 
         $members = User::where('role', User::ROLE_STAFF_MEMBER)
             ->withCount('assignedWorkspaces')
+            ->with('staffManagers:id,name')
             ->when(! $request->boolean('include_archived'), fn ($q) => $q->whereNull('archived_at'))
             ->when($request->filled('q'), function ($q) use ($request) {
                 $term = '%' . $request->q . '%';
@@ -193,7 +194,12 @@ class StaffController extends Controller
 
     private function shape(User $member): array
     {
+        $teams = $member->relationLoaded('staffManagers')
+            ? $member->staffManagers->map(fn ($m) => ['manager_id' => $m->id, 'name' => $m->name])->values()
+            : $member->staffManagers()->get(['users.id', 'users.name'])->map(fn ($m) => ['manager_id' => $m->id, 'name' => $m->name])->values();
+
         return [
+            'teams' => $teams,
             'id' => $member->id,
             'name' => $member->name,
             'email' => $member->email,

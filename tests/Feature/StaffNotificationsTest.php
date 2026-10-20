@@ -51,6 +51,8 @@ class StaffNotificationsTest extends TestCase
         $this->ws = Workspace::factory()->create(['client_id' => $this->client->id, 'manager_id' => $this->manager->id, 'status' => 'active']);
 
         $this->ws->staff()->attach([$this->staff->id => ['assigned_by' => $this->superAdmin->id], $this->otherStaff->id => ['assigned_by' => $this->superAdmin->id]]);
+        // A manager assigns from his own team only (PLAN_2 ق٧).
+        $this->manager->managerTeam()->attach([$this->staff->id, $this->otherStaff->id, $this->unassigned->id]);
     }
 
     private function member(string $name): User

@@ -19,6 +19,7 @@ use App\Domains\Audit\LoginAttemptController;
 use App\Domains\Notification\NotificationController;
 use App\Domains\SubUser\SubUserController;
 use App\Domains\Team\TeamController;
+use App\Domains\Staff\ManagerTeamController;
 use App\Domains\Staff\StaffController;
 use App\Domains\Staff\WorkspaceStaffController;
 use App\Domains\Dashboard\DashboardController;
@@ -161,6 +162,13 @@ Route::middleware(['auth:sanctum', 'restrict.roles', 'throttle:authenticated', '
     Route::get('/workspaces/{workspace}/staff', [WorkspaceStaffController::class, 'index'])->middleware('not.assistant');
     Route::put('/workspaces/{workspace}/staff/{member}', [WorkspaceStaffController::class, 'assign'])->middleware('not.assistant');
     Route::delete('/workspaces/{workspace}/staff/{member}', [WorkspaceStaffController::class, 'unassign'])->middleware('not.assistant');
+    Route::patch('/workspaces/{workspace}/staff/{member}/permissions', [WorkspaceStaffController::class, 'updatePermissions'])->middleware('not.assistant');
+
+    // A manager's own team of company staff (PLAN_2_MANAGER_TEAMS.md).
+    Route::get('/my-team', [ManagerTeamController::class, 'index'])->middleware('not.assistant');
+    Route::post('/my-team/{member}', [ManagerTeamController::class, 'add'])->middleware('not.assistant');
+    Route::get('/my-team/{member}/removal-impact', [ManagerTeamController::class, 'removalImpact'])->middleware('not.assistant');
+    Route::delete('/my-team/{member}', [ManagerTeamController::class, 'remove'])->middleware('not.assistant');
 
     // My assistants (account manager only — TeamController refuses everyone
     // else, super admin included; see MANAGER_ASSISTANT_PLAN.md ق١/ق٩).

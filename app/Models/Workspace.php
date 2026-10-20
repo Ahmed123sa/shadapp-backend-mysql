@@ -34,8 +34,31 @@ class Workspace extends Model
     public function staff(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'workspace_staff')
-            ->withPivot('assigned_by')
+            ->withPivot('assigned_by', 'permissions')
             ->withTimestamps();
+    }
+
+    /** Decode a workspace_staff.permissions value into the full {key: bool} map (null = all allowed). */
+    public static function decodeStaffPermissions($raw): array
+    {
+        $arr = is_string($raw) ? json_decode($raw, true) : (is_array($raw) ? $raw : null);
+
+        return User::staffPermissionMap(is_array($arr) ? $arr : null);
+    }
+
+    /** Full permission map of an assigned staff member on this client (all true when none stored). */
+    public function staffPermissionsOf($user): array
+    {
+        $row = $this->staff()->whereKey($user->getKey())->first();
+
+        return self::decodeStaffPermissions($row?->pivot?->permissions);
+    }
+
+    /** Whether this assigned, active staff member holds $key on this client. */
+    public function staffCan($user, string $key): bool
+    {
+        return $this->hasStaffMember($user)
+            && (self::decodeStaffPermissions($this->staff()->whereKey($user->getKey())->first()?->pivot?->permissions)[$key] ?? false);
     }
 
     /**
