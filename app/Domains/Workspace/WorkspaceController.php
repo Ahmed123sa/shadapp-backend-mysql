@@ -59,6 +59,8 @@ class WorkspaceController extends Controller
                     'manager' => $workspace->manager,
                     'approvals' => $workspace->approvals,
                     'meetings' => $workspace->meetings,
+                    // What this staff member may do with this client (PLAN_2 ق٣).
+                    'my_staff_permissions' => $workspace->staffPermissionsOf($viewer),
                 ],
                 'nextMeeting' => $nextMeeting,
             ]);

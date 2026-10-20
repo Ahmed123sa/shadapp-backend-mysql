@@ -30,7 +30,7 @@ class StaffNotifier
     {
         $workspace = $message->workspace;
 
-        foreach (self::assigned($workspace) as $staff) {
+        foreach (self::assigned($workspace, 'can_view_chat') as $staff) {
             self::safely(function () use ($staff, $message, $workspace) {
                 // Same push throttle as the manager's: one push per 5 minutes
                 // per conversation until they open the chat; the stored
@@ -50,7 +50,7 @@ class StaffNotifier
     /** The client answered an approval request. $exceptUserId is told already. */
     public static function approvalResponded(Approval $approval, ?int $exceptUserId = null): void
     {
-        foreach (self::assigned($approval->workspace) as $staff) {
+        foreach (self::assigned($approval->workspace, 'can_view_approvals') as $staff) {
             if ($exceptUserId !== null && $staff->id === $exceptUserId) {
                 continue;
             }
@@ -62,7 +62,7 @@ class StaffNotifier
     public static function meetingReminder(Meeting $meeting, array $exceptUserIds = []): int
     {
         $sent = 0;
-        foreach (self::assigned($meeting->workspace) as $staff) {
+        foreach (self::assigned($meeting->workspace, 'can_view_meetings') as $staff) {
             if (in_array($staff->id, $exceptUserIds, true)) {
                 continue;
             }
@@ -82,13 +82,17 @@ class StaffNotifier
     }
 
     /** @return \Illuminate\Support\Collection<int, User> */
-    private static function assigned(?Workspace $workspace)
+    private static function assigned(?Workspace $workspace, string $permission)
     {
         if (! $workspace) {
             return collect();
         }
 
-        return $workspace->staff()->get()->filter(fn (User $u) => $u->isStaffMember() && $u->isActive())->values();
+        // Only those whose assignment on this client holds $permission.
+        return $workspace->staff()->get()
+            ->filter(fn (User $u) => $u->isStaffMember() && $u->isActive()
+                && (Workspace::decodeStaffPermissions($u->pivot->permissions)[$permission] ?? false))
+            ->values();
     }
 
     private static function safely(callable $fn): void
