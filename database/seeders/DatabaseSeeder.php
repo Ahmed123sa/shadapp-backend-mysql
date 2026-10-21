@@ -20,7 +20,7 @@ class DatabaseSeeder extends Seeder
         $superAdmin = User::create([
             'name' => 'CEO',
             // Live address by default; override locally with SEED_ADMIN_EMAIL in .env (never commit a local value).
-            'email' => env('SEED_ADMIN_EMAIL', 'admin@shadapp.com'),
+            'email' => env('SEED_ADMIN_EMAIL', 'official@shadmanagement.co'),
             'password' => 'password',
             'role' => User::ROLE_SUPER_ADMIN,
         ]);
