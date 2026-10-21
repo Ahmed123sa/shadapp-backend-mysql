@@ -15,6 +15,21 @@ class Meeting extends Model
 
     protected $appends = ['host_user_id'];
 
+    // Internal bookkeeping for meetings:send-alerts, not part of the API shape.
+    protected $hidden = ['soon_notified_at', 'start_notified_at'];
+
+    protected static function booted(): void
+    {
+        // A meeting moved to another time gets its "starts in 5 minutes" and
+        // "has started" alerts again, for the new time.
+        static::updating(function (Meeting $meeting) {
+            if ($meeting->isDirty('scheduled_at')) {
+                $meeting->soon_notified_at = null;
+                $meeting->start_notified_at = null;
+            }
+        });
+    }
+
     protected $fillable = [
         'workspace_id', 'contract_id', 'approval_id', 'title', 'zoom_meeting_id', 'link', 'passcode',
         'scheduled_at', 'duration_minutes', 'status', 'notes', 'recording_url', 'created_by', 'ended_at',
@@ -30,6 +45,8 @@ class Meeting extends Model
             'zoom_ended_at' => 'datetime',
             'zoom_attendees' => 'array',
             'duration_minutes' => 'integer',
+            'soon_notified_at' => 'datetime',
+            'start_notified_at' => 'datetime',
         ];
     }
 

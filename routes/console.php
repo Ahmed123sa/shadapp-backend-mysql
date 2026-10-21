@@ -10,6 +10,8 @@ Artisan::command('inspire', function () {
 
 Schedule::command('contracts:send-reminders')->dailyAt('09:00');
 Schedule::command('meetings:send-reminders')->everyThirtyMinutes();
+// "Starts in 5 minutes" and "has started" alerts (each sent once per meeting).
+Schedule::command('meetings:send-alerts')->everyMinute()->withoutOverlapping();
 Schedule::command('meetings:update-statuses')->everyFiveMinutes();
 Schedule::command('payments:send-reminders')->dailyAt('09:00');
 Schedule::command('birthdays:send-reminders')->dailyAt('09:00');

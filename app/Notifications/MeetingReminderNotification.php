@@ -8,9 +8,27 @@ class MeetingReminderNotification extends BaseNotification
 {
     public Meeting $meeting;
 
-    public function __construct(Meeting $meeting)
+    /**
+     * 'reminder' = the half-hour reminder (meetings:send-reminders);
+     * 'soon' = starts in 5 minutes, 'started' = starting now
+     * (meetings:send-alerts). Same notification type for the apps, only the
+     * wording differs.
+     */
+    public string $kind;
+
+    public function __construct(Meeting $meeting, string $kind = 'reminder')
     {
         $this->meeting = $meeting;
+        $this->kind = $kind;
+    }
+
+    private function heading(): string
+    {
+        return match ($this->kind) {
+            'soon' => 'الاجتماع هيبدأ كمان 5 دقايق',
+            'started' => 'الاجتماع بدأ دلوقتي',
+            default => 'تذكير باجتماع',
+        };
     }
 
     public function toDatabase($notifiable): array
@@ -27,14 +45,15 @@ class MeetingReminderNotification extends BaseNotification
             'client_id' => $this->meeting->workspace?->client_id,
             'title' => $this->meeting->title,
             'scheduled_at' => $this->meeting->scheduled_at,
-            'message' => "تذكير باجتماع: {$this->meeting->title}",
+            'message' => "{$this->heading()}: {$this->meeting->title}",
+            'kind' => $this->kind,
         ];
     }
 
     public function toFcm($notifiable): array
     {
         return [
-            'title' => 'تذكير باجتماع',
+            'title' => $this->heading(),
             // Plain text can't be converted per reader like the apps do, so
             // it uses the business timezone (App\Support\DisplayTime).
             'body' => "اجتماع {$this->meeting->title} في " . \App\Support\DisplayTime::format($this->meeting->scheduled_at),

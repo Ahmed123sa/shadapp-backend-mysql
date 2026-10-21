@@ -35,7 +35,7 @@ class CreateMeetingChatMessage
 
         $messageText = '📹 ' . ($meeting->title ?? 'اجتماع جديد');
 
-        $workspace->chatMessages()->create([
+        $message = $workspace->chatMessages()->create([
             'sender_type' => $creator ? get_class($creator) : User::class,
             'sender_id' => $meeting->created_by,
             'message' => $messageText,
@@ -50,5 +50,21 @@ class CreateMeetingChatMessage
                 'status' => $meeting->status,
             ],
         ]);
+
+        // Live update + push to the client, the same way a rescheduled
+        // meeting's card is delivered (Meeting::postRescheduledChatCard). Before
+        // this the new card only showed up when the chat was next opened.
+        try {
+            broadcast(new \App\Domains\Chat\MessageSent($message));
+        } catch (\Throwable $e) {
+            Log::warning('Meeting card broadcast failed (non-critical): ' . $e->getMessage());
+        }
+        if ($workspace->client) {
+            try {
+                $workspace->client->notify(new \App\Notifications\ChatMessageSentNotification($message));
+            } catch (\Throwable $e) {
+                Log::warning('Meeting card notification failed: ' . $e->getMessage());
+            }
+        }
     }
 }

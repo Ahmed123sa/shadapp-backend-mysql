@@ -59,15 +59,15 @@ class StaffNotifier
     }
 
     /** @param array<int|null> $exceptUserIds people who got this reminder directly. */
-    public static function meetingReminder(Meeting $meeting, array $exceptUserIds = []): int
+    public static function meetingReminder(Meeting $meeting, array $exceptUserIds = [], string $kind = 'reminder'): int
     {
         $sent = 0;
         foreach (self::assigned($meeting->workspace, 'can_view_meetings') as $staff) {
             if (in_array($staff->id, $exceptUserIds, true)) {
                 continue;
             }
-            self::safely(function () use ($staff, $meeting, &$sent) {
-                $staff->notify(new MeetingReminderNotification($meeting));
+            self::safely(function () use ($staff, $meeting, $kind, &$sent) {
+                $staff->notify(new MeetingReminderNotification($meeting, $kind));
                 $sent++;
             });
         }
