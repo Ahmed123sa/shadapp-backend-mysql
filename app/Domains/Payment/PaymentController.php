@@ -335,7 +335,7 @@ class PaymentController extends Controller
 
     public function update(Request $request, Workspace $workspace, Payment $payment): JsonResponse
     {
-        if (!in_array($payment->status, ['pending', 'scheduled', 'rejected'])) {
+        if (!in_array($payment->status, ['pending', 'scheduled', 'overdue', 'rejected'])) {
             return response()->json(['message' => 'لا يمكن تعديل هذه الدفعة'], 422);
         }
 
@@ -351,10 +351,10 @@ class PaymentController extends Controller
             'proof_files.*' => UploadRules::proof(required: true),
         ]);
 
-        // Sending a scheduled installment or a rejected payment back for review
+        // Sending a scheduled or overdue installment, or a rejected payment, back for review
         // needs a NEW proof: otherwise it would reach the reviewer with the
         // very file that was rejected (or with no file at all).
-        if (in_array($payment->status, ['scheduled', 'rejected'], true) && !$request->hasFile('proof_files')) {
+        if (in_array($payment->status, ['scheduled', 'overdue', 'rejected'], true) && !$request->hasFile('proof_files')) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'proof_files' => ['ارفع إثبات دفع جديد عشان تبعت الدفعة للمراجعة.'],
             ]);
@@ -381,7 +381,7 @@ class PaymentController extends Controller
             $payment->proof_file_url = $proofFileUrl;
         }
 
-        if ($payment->status === 'scheduled' || $payment->status === 'rejected') {
+        if (in_array($payment->status, ['scheduled', 'overdue', 'rejected'], true)) {
             $payment->status = 'pending';
             $payment->reviewed_by = null;
             $payment->reviewed_at = null;

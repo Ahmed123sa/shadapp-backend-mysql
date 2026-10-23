@@ -159,6 +159,44 @@ class PaymentProofRequiredTest extends TestCase
         $this->assertStringContainsString('keep.pdf', (string) $fresh->getRawOriginal('proof_file_url'));
     }
 
+    public function test_an_overdue_installment_can_be_paid_with_a_new_proof_and_reviewers_are_told(): void
+    {
+        \Illuminate\Support\Facades\Notification::fake();
+
+        $accountant = User::factory()->create(['role' => User::ROLE_ACCOUNTANT]);
+        $payment = $this->payment('overdue', ['due_date' => now()->subDays(3)]);
+
+        $this->asClient()
+            ->putJson($this->url($payment), ['method_type' => 'instapay', 'proof_files' => [$this->proof('late.pdf')]])
+            ->assertOk();
+
+        $this->assertSame('pending', $payment->fresh()->status);
+        \Illuminate\Support\Facades\Notification::assertSentTo($accountant, \App\Notifications\PaymentCreatedNotification::class);
+    }
+
+    public function test_an_overdue_installment_cannot_become_pending_without_a_proof(): void
+    {
+        $payment = $this->payment('overdue', ['due_date' => now()->subDays(3)]);
+
+        $this->asClient()
+            ->putJson($this->url($payment), ['method_type' => 'instapay'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('proof_files');
+
+        $this->assertSame('overdue', $payment->fresh()->status);
+    }
+
+    public function test_an_approved_payment_still_cannot_be_edited(): void
+    {
+        $payment = $this->payment('approved', ['proof_file_url' => ['/storage/a.pdf']]);
+
+        $this->asClient()
+            ->putJson($this->url($payment), ['amount' => 1, 'proof_files' => [$this->proof()]])
+            ->assertStatus(422);
+
+        $this->assertSame('approved', $payment->fresh()->status);
+    }
+
     public function test_accountants_are_told_once_when_an_installment_becomes_overdue(): void
     {
         Notification::fake();
