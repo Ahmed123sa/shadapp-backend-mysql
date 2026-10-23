@@ -111,6 +111,7 @@ class PaymentFlowTest extends TestCase
 
         $response = $this->actingAsClient($this->clientA)
             ->postJson("/api/workspaces/{$this->workspaceA->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 2000,
                 'method_type' => 'bank_transfer',
                 'contract_id' => $old->id,
@@ -127,6 +128,7 @@ class PaymentFlowTest extends TestCase
 
         $response = $this->actingAsClient($this->clientA)
             ->postJson("/api/workspaces/{$this->workspaceA->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 2000,
                 'method_type' => 'bank_transfer',
             ]);
@@ -145,6 +147,7 @@ class PaymentFlowTest extends TestCase
 
         $response = $this->actingAsClient($this->clientA)
             ->postJson("/api/workspaces/{$this->workspaceA->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 2000,
                 'method_type' => 'bank_transfer',
                 'contract_id' => $foreign->id,
@@ -167,6 +170,7 @@ class PaymentFlowTest extends TestCase
 
         $dup = $this->actingAsClient($this->clientA)
             ->postJson("/api/workspaces/{$this->workspaceA->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 100,
                 'method_type' => 'bank_transfer',
                 'contract_id' => $contractA->id,
@@ -175,6 +179,7 @@ class PaymentFlowTest extends TestCase
 
         $ok = $this->actingAsClient($this->clientA)
             ->postJson("/api/workspaces/{$this->workspaceA->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 100,
                 'method_type' => 'bank_transfer',
                 'contract_id' => $contractB->id,

@@ -178,6 +178,7 @@ class RealtimeEventDispatchTest extends TestCase
         $this->app->make('auth')->forgetGuards();
         $this->withHeaders(['Authorization' => 'Bearer ' . $token])
             ->postJson("/api/workspaces/{$workspace->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 1000,
                 'method_type' => 'bank_transfer',
             ])

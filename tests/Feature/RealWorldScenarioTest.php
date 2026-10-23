@@ -323,6 +323,7 @@ class RealWorldScenarioTest extends TestCase
             $this->defaultHeaders = [];
             $response = $this->withHeaders(['Authorization' => 'Bearer ' . $clientToken])
                 ->postJson("/api/workspaces/{$workspace->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                     'amount' => 25000,
                     'method_type' => 'bank_transfer',
                 ]);
@@ -593,7 +594,8 @@ class RealWorldScenarioTest extends TestCase
         $this->resetAuth();
         $this->defaultHeaders = [];
         $this->withHeaders(['Authorization' => 'Bearer ' . $c1Token])
-            ->postJson("/api/workspaces/{$ws1->id}/payments", ['amount' => 10000, 'method_type' => 'bank_transfer'])->assertStatus(201);
+            ->postJson("/api/workspaces/{$ws1->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],'amount' => 10000, 'method_type' => 'bank_transfer'])->assertStatus(201);
         $paymentId = Payment::where('workspace_id', $ws1->id)->first()->id;
         $this->actingAsSA()->postJson("/api/payments/{$paymentId}/review", ['action' => 'approved'])->assertStatus(200);
 

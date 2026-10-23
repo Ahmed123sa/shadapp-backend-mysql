@@ -75,6 +75,7 @@ class PaymentCurrencyTest extends TestCase
 
         $response = $this->actingAsClient($this->client)
             ->postJson("/api/workspaces/{$this->workspace->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 2000,
                 'method_type' => 'bank_transfer',
                 'contract_id' => $contract->id,
@@ -90,6 +91,7 @@ class PaymentCurrencyTest extends TestCase
 
         $response = $this->actingAsClient($this->client)
             ->postJson("/api/workspaces/{$this->workspace->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 2000,
                 'method_type' => 'bank_transfer',
                 'contract_id' => $contract->id,
@@ -114,6 +116,7 @@ class PaymentCurrencyTest extends TestCase
 
         $response = $this->actingAsClient($this->client)
             ->postJson("/api/workspaces/{$this->workspace->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 500,
                 'method_type' => 'bank_transfer',
             ]);
@@ -145,6 +148,7 @@ class PaymentCurrencyTest extends TestCase
 
         $response = $this->actingAsClient($this->client)
             ->postJson("/api/workspaces/{$this->workspace->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 500,
                 'method_type' => 'bank_transfer',
             ]);
@@ -171,6 +175,7 @@ class PaymentCurrencyTest extends TestCase
         // the workspace's contract currencies, so it's not ambiguous.
         $response = $this->actingAsClient($this->client)
             ->postJson("/api/workspaces/{$this->workspace->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 500,
                 'method_type' => 'bank_transfer',
                 'currency' => 'USD',
@@ -185,6 +190,7 @@ class PaymentCurrencyTest extends TestCase
     {
         $response = $this->actingAsClient($this->client)
             ->postJson("/api/workspaces/{$this->workspace->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 500,
                 'method_type' => 'bank_transfer',
                 'currency' => 'AED',
@@ -198,6 +204,7 @@ class PaymentCurrencyTest extends TestCase
     {
         $response = $this->actingAsClient($this->client)
             ->postJson("/api/workspaces/{$this->workspace->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 500,
                 'method_type' => 'bank_transfer',
             ]);

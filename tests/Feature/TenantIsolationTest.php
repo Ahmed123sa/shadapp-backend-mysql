@@ -223,6 +223,7 @@ class TenantIsolationTest extends TestCase
     {
         $this->actingAsClient($this->clientA)
             ->postJson("/api/workspaces/{$this->workspaceB->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 100,
                 'method_type' => 'bank_transfer',
             ])

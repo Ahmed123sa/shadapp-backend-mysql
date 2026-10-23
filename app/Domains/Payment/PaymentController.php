@@ -351,6 +351,15 @@ class PaymentController extends Controller
             'proof_files.*' => UploadRules::proof(required: true),
         ]);
 
+        // Sending a scheduled installment or a rejected payment back for review
+        // needs a NEW proof: otherwise it would reach the reviewer with the
+        // very file that was rejected (or with no file at all).
+        if (in_array($payment->status, ['scheduled', 'rejected'], true) && !$request->hasFile('proof_files')) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'proof_files' => ['ارفع إثبات دفع جديد عشان تبعت الدفعة للمراجعة.'],
+            ]);
+        }
+
         $wasPending = $payment->status === 'pending';
 
         if ($request->has('amount')) $payment->amount = $request->amount;
@@ -712,6 +721,7 @@ class PaymentController extends Controller
         foreach ($overdue as $payment) {
             $payment->update(['status' => 'overdue']);
             $payment->client->notify(new \App\Notifications\PaymentReminderNotification($payment, 'overdue'));
+            \App\Support\AccountantNotifier::paymentOverdue($payment);
             $sent++;
         }
 

@@ -39,6 +39,7 @@ class SendPaymentReminders extends Command
         foreach ($overdue as $payment) {
             $payment->update(['status' => 'overdue']);
             $payment->client->notify(new PaymentReminderNotification($payment, 'overdue'));
+            \App\Support\AccountantNotifier::paymentOverdue($payment);
             $sent++;
         }
 

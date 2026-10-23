@@ -25,9 +25,18 @@ class StorePaymentRequest extends FormRequest
                 'integer',
                 Rule::exists('contracts', 'id')->where(fn ($q) => $q->where('workspace_id', $this->route('workspace')->id)),
             ],
-            'proof_files' => 'nullable|array',
+            // The proof is what the reviewer decides on: a payment without one is not reviewable.
+            'proof_files' => 'required|array|min:1',
             'proof_files.*' => UploadRules::proof(required: true),
             'notes' => 'nullable|string',
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'proof_files.required' => 'ارفع إثبات الدفع (صورة أو PDF).',
+            'proof_files.min' => 'ارفع إثبات الدفع (صورة أو PDF).',
         ];
     }
 }

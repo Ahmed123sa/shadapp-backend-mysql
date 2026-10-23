@@ -450,6 +450,7 @@ class SubUserTest extends TestCase
 
         $this->actingAs($subUser, 'sub_user')
             ->postJson("/api/workspaces/{$workspace->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 1000,
                 'method_type' => 'bank_transfer',
             ])
@@ -466,6 +467,7 @@ class SubUserTest extends TestCase
 
         $this->actingAs($subUser, 'sub_user')
             ->postJson("/api/workspaces/{$workspace->id}/payments", [
+                'proof_files' => [\Illuminate\Http\UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf')],
                 'amount' => 1000,
                 'method_type' => 'bank_transfer',
             ])
