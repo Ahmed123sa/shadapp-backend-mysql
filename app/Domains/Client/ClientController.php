@@ -32,6 +32,12 @@ class ClientController extends Controller
             return response()->json(['clients' => $this->assignedClientsFor($user, $request)]);
         }
 
+        // The accountant lists the whole company's clients, but only the
+        // finance-side card of each (no sub-users, no notes).
+        if ($user instanceof \App\Models\User && $user->isAccountant()) {
+            return response()->json(['clients' => $this->clientsForAccountant($request)]);
+        }
+
         $clients = Client::with('workspace', 'subUsers', 'payments')
             // 23 Sept 2026 — whether the client has approved a contract.
             // Mobile's client cards showed "Not contracted" from signed_at,
@@ -64,6 +70,28 @@ class ClientController extends Controller
             ->paginate(30);
 
         return response()->json(['clients' => $clients]);
+    }
+
+    /** Every client of the company, as the accountant's finance card. */
+    private function clientsForAccountant(Request $request)
+    {
+        return Client::with('workspace.manager:id,name')
+            ->withExists(['contracts as has_signed_contract' => fn ($q) => $q->whereIn('contracts.status', Client::SIGNED_CONTRACT_STATUSES)])
+            ->when(! $request->boolean('include_archived'), fn ($q) => $q->where('status', '!=', 'archived'))
+            ->where('status', '!=', 'deleted')
+            ->when($request->filled('q'), function ($q) use ($request) {
+                $search = $request->q;
+                $q->where(fn ($w) => $w->where('contact_person', 'like', "%{$search}%")
+                    ->orWhere('company_name', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%"));
+            })
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->status))
+            ->when($request->filled('client_type'), fn ($q) => $q->where('client_type', $request->client_type))
+            ->when($request->filled('manager_id'), fn ($q) => $q->where('manager_id', $request->manager_id))
+            ->latest()
+            ->paginate(30)
+            ->through(fn (Client $c) => $c->accountantCard());
     }
 
     /** The clients a staff member is assigned to (paginated like the normal list). */
@@ -138,6 +166,20 @@ class ClientController extends Controller
         $viewer = $request->user();
         if ($viewer instanceof \App\Models\User && $viewer->isStaffMember()) {
             return response()->json(['client' => $client->load('workspace.manager:id,name,phone')->staffCard()]);
+        }
+
+        // The accountant gets the card plus this client's contracts and payments, nothing else.
+        if ($viewer instanceof \App\Models\User && $viewer->isAccountant()) {
+            $client->load('workspace.manager:id,name');
+            $client->loadExists(['contracts as has_signed_contract' => fn ($q) => $q->whereIn('contracts.status', Client::SIGNED_CONTRACT_STATUSES)]);
+            $card = $client->accountantCard();
+            if ($client->workspace) {
+                $card['workspace']['contracts'] = $client->workspace->contracts()->latest()
+                    ->get(['id', 'workspace_id', 'title', 'status', 'value', 'currency', 'pdf_url', 'created_at']);
+                $card['workspace']['payments'] = $client->workspace->payments()->with('contract:id,title')->latest()->get();
+            }
+
+            return response()->json(['client' => $card]);
         }
 
         $client->load(

@@ -25,6 +25,12 @@ class User extends Authenticatable
     const ROLE_MANAGER_ASSISTANT = 'manager_assistant';
     /** A company employee (chat, approval requests, meetings) assigned to clients — STAFF_TEAMS_PLAN.md. */
     const ROLE_STAFF_MEMBER = 'staff_member';
+    /**
+     * Finance-only company account (ACCOUNTANT_ROLE_PLAN.md): sees the money
+     * side of the whole company and may approve/reject payments, nothing else.
+     * Closed by default in RestrictRoles — only its allow-list is reachable.
+     */
+    const ROLE_ACCOUNTANT = 'accountant';
 
     /**
      * Single source for the permissions a manager can give an assistant
@@ -161,6 +167,28 @@ class User extends Authenticatable
     public function isStaffMember(): bool
     {
         return $this->role === self::ROLE_STAFF_MEMBER;
+    }
+
+    public function isAccountant(): bool
+    {
+        return $this->role === self::ROLE_ACCOUNTANT;
+    }
+
+    /**
+     * Company-wide reach for the FINANCE endpoints only. It is deliberately not
+     * isSuperAdmin(): that check guards dozens of unrelated routes, and an
+     * accountant must never inherit any of them. Use this ONLY in the handful
+     * of read endpoints RestrictRoles::ACCOUNTANT_ALLOWED_ROUTES opens.
+     */
+    public function seesAllFinance(): bool
+    {
+        return $this->isSuperAdmin() || $this->isAccountant();
+    }
+
+    /** May approve or reject a payment proof. Account managers never do. */
+    public function canReviewPayments(): bool
+    {
+        return $this->isSuperAdmin() || $this->isAccountant();
     }
 
     /**

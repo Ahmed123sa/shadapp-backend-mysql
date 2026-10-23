@@ -332,7 +332,7 @@ class RealWorldScenarioTest extends TestCase
             $this->assertEquals('pending', $response->json('payment.status'));
 
             // AM reviews and approves payment
-            $response = $this->actingAsAM($amUser)
+            $response = $this->actingAsSA()
                 ->postJson("/api/payments/{$paymentId}/review", ['action' => 'approved']);
 
             $response->assertStatus(200);
@@ -595,7 +595,7 @@ class RealWorldScenarioTest extends TestCase
         $this->withHeaders(['Authorization' => 'Bearer ' . $c1Token])
             ->postJson("/api/workspaces/{$ws1->id}/payments", ['amount' => 10000, 'method_type' => 'bank_transfer'])->assertStatus(201);
         $paymentId = Payment::where('workspace_id', $ws1->id)->first()->id;
-        $this->actingAsAM($ahmed)->postJson("/api/payments/{$paymentId}/review", ['action' => 'approved'])->assertStatus(200);
+        $this->actingAsSA()->postJson("/api/payments/{$paymentId}/review", ['action' => 'approved'])->assertStatus(200);
 
         // Now process client 2
         $c2Token = $client2->createToken('test')->plainTextToken;

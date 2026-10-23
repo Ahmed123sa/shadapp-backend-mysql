@@ -130,7 +130,7 @@ class Workspace extends Model
     public function canBeAccessedBy($user): bool
     {
         return match (true) {
-            $user instanceof User => $user->isSuperAdmin()
+            $user instanceof User => $user->seesAllFinance()
                 // A staff member's ownerManagerId() is their own id, which
                 // matches no workspace; they get in only through assignment.
                 || ($user->isStaffMember() ? $this->hasStaffMember($user) : $this->manager_id === $user->ownerManagerId()),

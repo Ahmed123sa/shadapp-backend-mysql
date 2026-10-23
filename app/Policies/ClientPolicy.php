@@ -11,7 +11,7 @@ class ClientPolicy
 
     public function viewAny($user): bool
     {
-        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT, \App\Models\User::ROLE_STAFF_MEMBER]);
+        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT, \App\Models\User::ROLE_STAFF_MEMBER, \App\Models\User::ROLE_ACCOUNTANT]);
     }
 
     public function view($user, Client $client): bool
@@ -26,7 +26,7 @@ class ClientPolicy
         if ($user instanceof \App\Models\SubUser && $user->client_id === $client->id) {
             return true;
         }
-        return $user instanceof \App\Models\User && ($user->isSuperAdmin() || $client->manager_id === $user->ownerManagerId());
+        return $user instanceof \App\Models\User && ($user->seesAllFinance() || $client->manager_id === $user->ownerManagerId());
     }
 
     public function create($user): bool

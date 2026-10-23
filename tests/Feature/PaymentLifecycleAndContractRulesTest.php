@@ -104,7 +104,7 @@ class PaymentLifecycleAndContractRulesTest extends TestCase
             'method_type' => 'bank_transfer',
         ]);
 
-        Sanctum::actingAs($manager);
+        Sanctum::actingAs($admin);
 
         $response = $this->postJson("/api/payments/{$payment->id}/review", [
             'action' => 'rejected',
@@ -176,7 +176,7 @@ class PaymentLifecycleAndContractRulesTest extends TestCase
             'method_type' => 'bank_transfer',
         ]);
 
-        Sanctum::actingAs($manager);
+        Sanctum::actingAs($admin);
 
         $response = $this->postJson("/api/payments/{$payment->id}/review", [
             'action' => 'approved',

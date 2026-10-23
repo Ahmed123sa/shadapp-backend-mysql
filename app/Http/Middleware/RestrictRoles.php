@@ -71,6 +71,44 @@ class RestrictRoles
         'POST api/meetings/{meeting}/enter' => 'can_join_meetings',
     ];
 
+    /**
+     * The accountant is DENIED BY DEFAULT exactly like a staff member: only
+     * these routes answer, everything else is 403 — including any route added
+     * later (ACCOUNTANT_ROLE_PLAN.md §٣). Reads of company money data, plus
+     * the ONE write they have: reviewing a payment.
+     */
+    public const ACCOUNTANT_ALLOWED_PATHS = [
+        'api/auth/logout',
+        'api/auth/me',
+        'api/broadcasting/auth',
+        'api/notifications',
+        'api/notifications/*',
+    ];
+
+    public const ACCOUNTANT_ALLOWED_ROUTES = [
+        // payments (read) + the single write
+        'GET api/all-payments',
+        'GET api/all-payments/export',
+        'GET api/payments/pending',
+        'GET api/workspaces/{workspace}/payments',
+        'GET api/workspaces/{workspace}/payment-schedule',
+        'POST api/payments/{payment}/review',
+        // contracts (read; the PDF is a field of the contract)
+        'GET api/all-contracts',
+        'GET api/workspaces/{workspace}/contracts',
+        'GET api/contracts/{contract}',
+        // who is who (names for filters and headers)
+        'GET api/clients',
+        'GET api/clients/{client}',
+        'GET api/workspaces/{workspace}',
+        'GET api/account-managers',
+        'GET api/company-staff',
+        // numbers and settings the finance screens read
+        'GET api/badge-counts',
+        'GET api/dashboard/stats',
+        'GET api/settings',
+    ];
+
     /** Inside an allowed pattern, but never for a staff member. */
     private const DENIED_PATHS = [
         'api/notifications/send-fcm',
@@ -85,6 +123,11 @@ class RestrictRoles
                 abort(403, 'ميزة المساعدين متوقفة حاليًا.');
             }
 
+            if ($user->isAccountant()) {
+                abort_unless($user->isActive(), 403, 'هذا الحساب متوقف حاليًا.');
+                abort_unless($this->accountantAllowed($request), 403, 'غير مصرح لك بالوصول لهذه البيانات');
+            }
+
             if ($user->isStaffMember()) {
                 abort_unless($user->isActive(), 403, 'هذا الحساب متوقف حاليًا.');
                 abort_unless($this->allowed($request), 403, 'غير مصرح لك بالوصول لهذه البيانات');
@@ -93,6 +136,22 @@ class RestrictRoles
         }
 
         return $next($request);
+    }
+
+    private function accountantAllowed(Request $request): bool
+    {
+        if ($request->is(self::ACCOUNTANT_ALLOWED_PATHS) && ! $request->is(self::DENIED_PATHS)) {
+            return true;
+        }
+
+        $route = $request->route();
+        if (! $route) {
+            return false;
+        }
+
+        $method = $request->method() === 'HEAD' ? 'GET' : $request->method();
+
+        return in_array($method . ' ' . $route->uri(), self::ACCOUNTANT_ALLOWED_ROUTES, true);
     }
 
     private function allowed(Request $request): bool

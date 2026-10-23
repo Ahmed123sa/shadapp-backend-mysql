@@ -38,10 +38,126 @@ class PaymentController extends Controller
     {
         $this->authorize('viewAny', Payment::class);
 
+        $query = $this->allPaymentsQuery($request);
+
+        $payments = (clone $query)->latest()->paginate($request->input('per_page', 30));
+
+        // by_currency covers every currency an approved payment was made in
+        // (SAR/USD included), grouped in one query. Kept alongside the two
+        // scalar fields above rather than replacing them, so any existing
+        // consumer reading approved_total_sar/usd directly is unaffected.
+        $byCurrency = (clone $query)->where('status', 'approved')
+            ->selectRaw('currency, SUM(amount) as total')
+            ->groupBy('currency')
+            ->pluck('total', 'currency');
+
+        $stats = [
+            'total_count' => (clone $query)->count(),
+            'approved_count' => (clone $query)->where('status', 'approved')->count(),
+            'pending_count' => (clone $query)->where('status', 'pending')->count(),
+            'approved_total_sar' => (clone $query)->where('status', 'approved')->where('currency', 'SAR')->sum('amount'),
+            'approved_total_usd' => (clone $query)->where('status', 'approved')->where('currency', 'USD')->sum('amount'),
+            'approved_by_currency' => $byCurrency,
+        ];
+
+        return response()->json([
+            'payments' => $payments,
+            'stats' => $stats,
+        ]);
+    }
+
+    /** Hard stop so one export can never exhaust the server. */
+    private const EXPORT_MAX_ROWS = 50000;
+
+    /**
+     * CSV of EVERY payment matching the list filters — not just the page on
+     * screen (the old client-side export silently dropped everything past the
+     * first 30). Same scope as /all-payments, so a manager exports their own
+     * clients' payments only. Each export is written to the audit log.
+     */
+    public function exportAllPayments(Request $request)
+    {
+        $this->authorize('viewAny', Payment::class);
+
         $user = $request->user();
+        $query = $this->allPaymentsQuery($request)->with(['reviewer:id,name']);
+
+        $total = (clone $query)->count();
+        abort_if($total > self::EXPORT_MAX_ROWS, 422, 'النتائج كتير على التصدير (' . $total . ' دفعة). ضيّق الفلتر وجرّب تاني.');
+
+        AuditLog::create([
+            'auditable_type' => User::class,
+            'auditable_id' => $user->id,
+            'user_id' => $user->id,
+            'action' => 'payments.exported',
+            'metadata' => [
+                'rows' => $total,
+                'by_role' => $user->role,
+                'filters' => $request->only(['status', 'currency', 'client_id', 'manager_id', 'date_from', 'date_to', 'search']),
+            ],
+            'ip_address' => $request->ip(),
+        ]);
+
+        $headers = ['ID', 'Client', 'Manager', 'Contract', 'Amount', 'Currency', 'Method', 'Status', 'Submitted', 'Reviewed at', 'Reviewed by', 'Rejection reason'];
+
+        return response()->streamDownload(function () use ($query, $headers) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel opens Arabic correctly
+            fwrite($out, implode(',', array_map([$this, 'csvCell'], $headers)) . "\r\n");
+
+            $query->chunkByIdDesc(500, function ($payments) use ($out) {
+                foreach ($payments as $p) {
+                    $client = $p->workspace?->client;
+                    fwrite($out, implode(',', [
+                        $this->csvCell($p->id),
+                        $this->csvCell($client?->company_name ?: $client?->contact_person),
+                        $this->csvCell($p->workspace?->manager?->name),
+                        $this->csvCell($p->contract?->title),
+                        $this->csvCell($p->amount, false),
+                        $this->csvCell($p->currency ?: 'SAR'),
+                        $this->csvCell($p->method_type),
+                        $this->csvCell($p->status),
+                        $this->csvCell($p->created_at?->toDateTimeString()),
+                        $this->csvCell($p->reviewed_at?->toDateTimeString()),
+                        $this->csvCell($p->reviewer?->name),
+                        $this->csvCell($p->rejection_reason),
+                    ]) . "\r\n");
+                }
+            });
+
+            fclose($out);
+        }, 'payments-' . now()->format('Y-m-d') . '.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * One CSV cell, quoted. A text cell that starts with = + - @ (or a tab /
+     * carriage return) would be run as a formula by Excel, so it is prefixed
+     * with an apostrophe. $guard=false is for numbers.
+     */
+    public function csvCell($value, bool $guard = true): string
+    {
+        $text = (string) ($value ?? '');
+        if ($guard && $text !== '' && preg_match('/^[=+\-@\t\r]/', $text)) {
+            $text = "'" . $text;
+        }
+
+        return '"' . str_replace('"', '""', $text) . '"';
+    }
+
+    /**
+     * The filtered /all-payments query, shared by the list and the CSV export
+     * so the two can never disagree about what "these filters" means.
+     */
+    private function allPaymentsQuery(Request $request)
+    {
+        $user = $request->user();
+        // Company-side lists only: a client token reaching this route is refused, not a 500.
+        abort_unless($user instanceof User, 403, 'غير مصرح');
         $query = Payment::with(['workspace.client', 'workspace.manager', 'contract']);
 
-        if (!$user->isSuperAdmin()) {
+        // Company-wide for the super admin and the accountant; a manager sees
+        // their own clients' payments only.
+        if (!$user->seesAllFinance()) {
             $query->whereIn('client_id', Client::where('manager_id', $user->ownerManagerId())->select('id'));
         }
 
@@ -85,30 +201,7 @@ class PaymentController extends Controller
             });
         }
 
-        $payments = (clone $query)->latest()->paginate($request->input('per_page', 30));
-
-        // by_currency covers every currency an approved payment was made in
-        // (SAR/USD included), grouped in one query. Kept alongside the two
-        // scalar fields above rather than replacing them, so any existing
-        // consumer reading approved_total_sar/usd directly is unaffected.
-        $byCurrency = (clone $query)->where('status', 'approved')
-            ->selectRaw('currency, SUM(amount) as total')
-            ->groupBy('currency')
-            ->pluck('total', 'currency');
-
-        $stats = [
-            'total_count' => (clone $query)->count(),
-            'approved_count' => (clone $query)->where('status', 'approved')->count(),
-            'pending_count' => (clone $query)->where('status', 'pending')->count(),
-            'approved_total_sar' => (clone $query)->where('status', 'approved')->where('currency', 'SAR')->sum('amount'),
-            'approved_total_usd' => (clone $query)->where('status', 'approved')->where('currency', 'USD')->sum('amount'),
-            'approved_by_currency' => $byCurrency,
-        ];
-
-        return response()->json([
-            'payments' => $payments,
-            'stats' => $stats,
-        ]);
+        return $query;
     }
 
     public function pending(Request $request): JsonResponse
@@ -119,7 +212,7 @@ class PaymentController extends Controller
         $query = Payment::with(['workspace.client', 'contract'])
             ->where('status', 'pending');
 
-        if (!$user->isSuperAdmin()) {
+        if (!$user->seesAllFinance()) {
             $query->whereIn('client_id', Client::where('manager_id', $user->ownerManagerId())->select('id'));
         }
 
@@ -308,14 +401,21 @@ class PaymentController extends Controller
     public function review(ReviewPaymentRequest $request, Payment $payment): JsonResponse
     {
         $action = $request->input('action');
+        $reviewer = $request->user();
+
+        // The accountant reads an archived client's history but never acts on it.
+        if ($reviewer->isAccountant() && $payment->client?->isArchived()) {
+            abort(422, 'العميل ده مؤرشف، مينفعش تراجع دفعاته.');
+        }
+
         $workspace = $payment->workspace->fresh();
         $wasInactive = $workspace->status !== 'active';
 
         if ($action === 'rejected') {
             $rejectionReason = $request->input('rejection_reason') ?? $request->input('notes');
-            $payment->update([
+            $this->claimReview($payment, [
                 'status' => 'rejected',
-                'reviewed_by' => $request->user()->id,
+                'reviewed_by' => $reviewer->id,
                 'reviewed_at' => now(),
                 'rejection_reason' => $rejectionReason,
             ]);
@@ -328,7 +428,7 @@ class PaymentController extends Controller
                 'auditable_id' => $payment->id,
                 'user_id' => $request->user()->id,
                 'action' => 'payment.rejected',
-                'metadata' => $rejectionReason ? ['reason' => $rejectionReason] : null,
+                'metadata' => array_filter(['reason' => $rejectionReason, 'by_role' => $reviewer->role]),
                 'ip_address' => $request->ip(),
             ]);
 
@@ -348,7 +448,7 @@ class PaymentController extends Controller
         if ($request->has('notes') && $request->input('notes') !== null) {
             $paymentData['notes'] = $request->input('notes');
         }
-        $payment->update($paymentData);
+        $this->claimReview($payment, $paymentData);
 
         $activatedNow = false;
         if ($wasInactive) {
@@ -377,6 +477,7 @@ class PaymentController extends Controller
             'auditable_id' => $payment->id,
             'user_id' => $request->user()->id,
             'action' => 'payment.approved',
+            'metadata' => ['by_role' => $reviewer->role],
             'ip_address' => $request->ip(),
         ]);
 
@@ -386,6 +487,22 @@ class PaymentController extends Controller
             'payment' => $payment->fresh(),
             'workspace' => $workspace,
         ]);
+    }
+
+    /**
+     * Flips the payment to its reviewed state ONLY if nobody got there first.
+     * Two reviewers (say the accountant and the super admin) opening the same
+     * proof must not overwrite each other: the second one gets a 409 instead.
+     */
+    private function claimReview(Payment $payment, array $data): void
+    {
+        $changed = Payment::whereKey($payment->id)
+            ->whereNotIn('status', ['approved', 'rejected'])
+            ->update($data);
+
+        abort_if($changed === 0, 409, 'الدفعة دي اتراجعت بالفعل. حدّث الصفحة.');
+
+        $payment->refresh();
     }
 
     public function schedule(Request $request, Workspace $workspace): JsonResponse

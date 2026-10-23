@@ -34,7 +34,7 @@ class ContractController extends Controller
         // stays 30 so a caller that never sends per_page sees no change.
         $perPage = max(1, min((int) $request->input('per_page', 30), 100));
         $contracts = Contract::with('workspace.client')
-            ->when(!$user->isSuperAdmin(), fn($q) => $q->whereHas('workspace', fn($q) => $q->where('manager_id', $user->ownerManagerId())))
+            ->when(!$user->seesAllFinance(), fn($q) => $q->whereHas('workspace', fn($q) => $q->where('manager_id', $user->ownerManagerId())))
             ->latest()
             ->paginate($perPage);
 
@@ -156,7 +156,12 @@ class ContractController extends Controller
     {
         $this->authorize('viewAny', Contract::class);
 
-        $contracts = $workspace->contracts()->with('clauses', 'requiredDocuments.files')->latest()->paginate(30);
+        // The accountant gets the contract itself (and its PDF), never the
+        // documents the client attached to it.
+        $withs = $request->user() instanceof User && $request->user()->isAccountant()
+            ? ['clauses']
+            : ['clauses', 'requiredDocuments.files'];
+        $contracts = $workspace->contracts()->with($withs)->latest()->paginate(30);
         $this->ensureFreshPdfs($contracts->getCollection());
 
         return response()->json(['contracts' => $contracts]);
@@ -246,7 +251,14 @@ class ContractController extends Controller
 
         app(\App\Services\ContractPdfService::class)->ensureFreshPdf($contract);
 
-        return response()->json(['contract' => $contract->load('clauses', 'workspace', 'requiredDocuments')]);
+        // Attached client documents are not finance data: the accountant sees
+        // the contract and its PDF only.
+        $viewer = $request->user();
+        $relations = $viewer instanceof User && $viewer->isAccountant()
+            ? ['clauses', 'workspace']
+            : ['clauses', 'workspace', 'requiredDocuments'];
+
+        return response()->json(['contract' => $contract->load($relations)]);
     }
 
     public function update(UpdateContractRequest $request, Contract $contract): JsonResponse

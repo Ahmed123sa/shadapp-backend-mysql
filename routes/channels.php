@@ -16,6 +16,11 @@ Broadcast::channel('App.Models.Client.{id}', function ($client, $id) {
 });
 
 Broadcast::channel('workspace.{workspaceId}', function ($user, $workspaceId) {
+    // The accountant's live updates come through their own user channel only;
+    // a workspace channel carries chat events they must never receive.
+    if ($user instanceof User && $user->isAccountant()) {
+        return false;
+    }
     $workspace = Workspace::find($workspaceId);
     $canView = $workspace !== null && app(WorkspacePolicy::class)->view($user, $workspace);
     return $canView;

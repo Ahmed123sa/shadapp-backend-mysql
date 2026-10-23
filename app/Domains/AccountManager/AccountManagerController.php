@@ -18,12 +18,15 @@ class AccountManagerController extends Controller
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        if (!$user->isSuperAdmin()) {
+        // The accountant only needs the names (finance filters); they read the
+        // same list as the super admin who created them.
+        if (!$user->seesAllFinance()) {
             return response()->json(['message' => 'غير مصرح'], 403);
         }
+        $ownerAdminId = $user->isSuperAdmin() ? $user->id : $user->super_admin_id;
 
         $managers = User::where('role', User::ROLE_ACCOUNT_MANAGER)
-            ->where('super_admin_id', $user->id)
+            ->where('super_admin_id', $ownerAdminId)
             // Deactivated managers are hidden from the default list — this is
             // where every "who can this be assigned to" screen gets its data
             // from, so a deactivated manager silently disappearing from here

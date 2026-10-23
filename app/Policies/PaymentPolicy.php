@@ -18,32 +18,32 @@ class PaymentPolicy
     {
         if ($user instanceof \App\Models\Client) return true;
         if ($user instanceof SubUser) return true;
-        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER]);
+        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_ACCOUNTANT]);
     }
 
     public function view($user, Payment $payment): bool
     {
         $isClient = $user instanceof \App\Models\Client && $payment->client_id === $user->id;
         $isSubUser = $user instanceof SubUser && $payment->client_id === $user->client_id;
-        $isManager = $user instanceof \App\Models\User && ($user->isSuperAdmin() || $payment->workspace->manager_id === $user->id);
+        $isManager = $user instanceof \App\Models\User && ($user->seesAllFinance() || $payment->workspace->manager_id === $user->id);
         return $isClient || $isSubUser || $isManager;
     }
 
     public function create($user): bool
     {
-        return true;
+        // The accountant reviews money, they never create or edit it.
+        return ! ($user instanceof \App\Models\User && $user->isAccountant());
     }
 
+    /**
+     * Approving or rejecting a proof is the super admin's and the accountant's
+     * job only. An account manager (and an assistant or staff member) never
+     * reviews payments — the apps never offered it and the API no longer does
+     * either (ACCOUNTANT_ROLE_PLAN.md §٩.٢).
+     */
     public function review($user, Payment $payment): bool
     {
-        if (!$user instanceof \App\Models\User) {
-            return false;
-        }
-
-        // Super admins review anything; an account manager may review payments
-        // only inside a workspace they actually manage. Restricting this to
-        // super admins alone locked account managers out of their own
-        // workspaces (caught by PaymentFlowTest + RealWorldScenarioTest).
-        return $user->isSuperAdmin() || $payment->workspace->manager_id === $user->id;
+        return $user instanceof \App\Models\User && $user->canReviewPayments();
     }
 }
+

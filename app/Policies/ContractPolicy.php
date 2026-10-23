@@ -25,14 +25,14 @@ class ContractPolicy
     {
         if ($user instanceof \App\Models\Client) return true;
         if ($user instanceof SubUser) return true;
-        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT]);
+        return $user instanceof \App\Models\User && in_array($user->role, [\App\Models\User::ROLE_SUPER_ADMIN, \App\Models\User::ROLE_ACCOUNT_MANAGER, \App\Models\User::ROLE_MANAGER_ASSISTANT, \App\Models\User::ROLE_ACCOUNTANT]);
     }
 
     public function view($user, Contract $contract): bool
     {
         $isClient = $user instanceof \App\Models\Client && $contract->workspace->client_id === $user->id;
         $isSubUser = $user instanceof SubUser && $contract->workspace->client_id === $user->client_id;
-        $isManager = $user instanceof \App\Models\User && ($user->isSuperAdmin() || $contract->workspace->manager_id === $user->ownerManagerId());
+        $isManager = $user instanceof \App\Models\User && ($user->seesAllFinance() || $contract->workspace->manager_id === $user->ownerManagerId());
         return $isClient || $isSubUser || $isManager;
     }
 

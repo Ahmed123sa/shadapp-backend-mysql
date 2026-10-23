@@ -32,6 +32,7 @@ class WorkspacePolicy
         if ($user instanceof SubUser && $workspace->client_id === $user->client_id) return true;
         // Company staff: only the workspaces they are assigned to.
         if ($user instanceof \App\Models\User && $user->isStaffMember()) return $workspace->hasStaffMember($user);
+        if ($user instanceof \App\Models\User && $user->isAccountant()) return true;
         return $this->isSuperAdmin($user) || ($user instanceof \App\Models\User && $workspace->manager_id === $user->ownerManagerId());
     }
 

@@ -26,7 +26,9 @@ class StaffController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $this->superAdmin($request);
+        // Read-only listing: the accountant may see the team (ACCOUNTANT_ROLE_PLAN.md).
+        $viewer = $request->user();
+        abort_unless($viewer instanceof User && $viewer->seesAllFinance(), 403, 'غير مصرح');
 
         $members = User::where('role', User::ROLE_STAFF_MEMBER)
             ->withCount('assignedWorkspaces')

@@ -192,7 +192,7 @@ class RealtimeEventDispatchTest extends TestCase
         [$manager, $client, $workspace] = $this->makeWorkspace();
         $payment = Payment::factory()->create(['workspace_id' => $workspace->id, 'client_id' => $client->id, 'status' => 'pending']);
 
-        $this->actingAs($manager)->postJson("/api/payments/{$payment->id}/review", ['action' => 'rejected'])->assertOk();
+        $this->actingAs(User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]))->postJson("/api/payments/{$payment->id}/review", ['action' => 'rejected', 'rejection_reason' => 'سبب الرفض للاختبار'])->assertOk();
 
         Event::assertDispatched(PaymentStatusChanged::class, fn ($e) => $e->payment->id === $payment->id && $e->payment->status === 'rejected');
         Event::assertNotDispatched(ContractStatusChanged::class);
@@ -206,7 +206,7 @@ class RealtimeEventDispatchTest extends TestCase
         $contract = Contract::factory()->create(['workspace_id' => $workspace->id, 'created_by' => $manager->id, 'status' => 'company_approved']);
         $payment = Payment::factory()->create(['workspace_id' => $workspace->id, 'client_id' => $client->id, 'status' => 'pending']);
 
-        $this->actingAs($manager)->postJson("/api/payments/{$payment->id}/review", ['action' => 'approved'])->assertOk();
+        $this->actingAs(User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]))->postJson("/api/payments/{$payment->id}/review", ['action' => 'approved'])->assertOk();
 
         Event::assertDispatched(PaymentStatusChanged::class, fn ($e) => $e->payment->id === $payment->id && $e->payment->status === 'approved');
         Event::assertDispatched(WorkspaceStatusChanged::class, fn ($e) => $e->workspace->id === $workspace->id && $e->workspace->status === 'active');

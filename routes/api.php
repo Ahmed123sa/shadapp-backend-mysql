@@ -21,6 +21,7 @@ use App\Domains\SubUser\SubUserController;
 use App\Domains\Team\TeamController;
 use App\Domains\Staff\ManagerTeamController;
 use App\Domains\Staff\StaffController;
+use App\Domains\Staff\AccountantController;
 use App\Domains\Staff\WorkspaceStaffController;
 use App\Domains\Dashboard\DashboardController;
 use App\Domains\Settings\SettingsController;
@@ -157,6 +158,15 @@ Route::middleware(['auth:sanctum', 'restrict.roles', 'throttle:authenticated', '
     Route::post('/company-staff/{member}/unarchive', [StaffController::class, 'unarchive'])->middleware('not.assistant');
     Route::get('/company-staff/{member}/clients', [WorkspaceStaffController::class, 'clientsOf'])->middleware('not.assistant');
 
+    // Accountants (super admin only — AccountantController refuses everyone
+    // else). Deactivate instead of delete, so the audit trail keeps the name.
+    Route::get('/accountants', [AccountantController::class, 'index'])->middleware('not.assistant');
+    Route::post('/accountants', [AccountantController::class, 'store'])->middleware('not.assistant');
+    Route::put('/accountants/{accountant}', [AccountantController::class, 'update'])->middleware('not.assistant');
+    Route::patch('/accountants/{accountant}/password', [AccountantController::class, 'changePassword'])->middleware('not.assistant');
+    Route::post('/accountants/{accountant}/deactivate', [AccountantController::class, 'deactivate'])->middleware('not.assistant');
+    Route::post('/accountants/{accountant}/activate', [AccountantController::class, 'activate'])->middleware('not.assistant');
+
     // The "Team" tab inside a client's workspace: which staff work on this
     // client. The workspace's own manager or the super admin only.
     Route::get('/workspaces/{workspace}/staff', [WorkspaceStaffController::class, 'index'])->middleware('not.assistant');
@@ -205,6 +215,7 @@ Route::middleware(['auth:sanctum', 'restrict.roles', 'throttle:authenticated', '
     Route::get('/all-contracts', [ContractController::class, 'allContracts']);
     Route::get('/all-meetings', [MeetingController::class, 'allMeetings']);
     Route::get('/all-payments', [PaymentController::class, 'allPayments'])->middleware('not.assistant');
+    Route::get('/all-payments/export', [PaymentController::class, 'exportAllPayments'])->middleware('not.assistant');
     Route::get('/all-files', [FileController::class, 'allFiles'])->middleware('assistant.can:can_view_files');
 
     // Contracts

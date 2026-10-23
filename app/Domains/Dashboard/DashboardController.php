@@ -33,8 +33,15 @@ class DashboardController extends Controller
     public function stats(Request $request): JsonResponse
     {
         $user = $request->user();
-        $isAm = !$user->isSuperAdmin();
         $filters = $request->only(['manager_id']);
+
+        // The accountant's home is the money side only — no client, contract
+        // or approval cards.
+        if ($user->isAccountant()) {
+            return $this->accountantStats($user, $filters);
+        }
+
+        $isAm = !$user->isSuperAdmin();
 
         $totalClients = (clone DashboardScope::clients($isAm, $user, $filters))
             ->whereNotIn('status', ['archived', 'deleted'])
@@ -88,6 +95,35 @@ class DashboardController extends Controller
         }
 
         return response()->json($response);
+    }
+
+    /** Finance-only numbers for the accountant, company-wide. */
+    private function accountantStats($user, array $filters): JsonResponse
+    {
+        $base = fn () => clone DashboardScope::payments(false, $user, $filters);
+
+        $displayTz = config('app.display_timezone', 'Africa/Cairo');
+        $nowInTz = Carbon::now($displayTz);
+        $monthStartUtc = $nowInTz->copy()->startOfMonth()->setTimezone('UTC');
+        $monthEndUtc = $nowInTz->copy()->endOfMonth()->setTimezone('UTC');
+
+        $revenueThisMonth = $base()
+            ->where('status', 'approved')
+            ->whereBetween('created_at', [$monthStartUtc, $monthEndUtc])
+            ->selectRaw('currency, SUM(amount) as total')
+            ->groupBy('currency')
+            ->pluck('total', 'currency')
+            ->map(fn ($v) => (float) $v)
+            ->toArray();
+
+        return response()->json([
+            'payments' => [
+                'pending' => $base()->where('status', 'pending')->count(),
+                'overdue' => $base()->where('status', 'overdue')->count(),
+            ],
+            'revenue_this_month' => $revenueThisMonth,
+            'period' => ['month' => $nowInTz->format('Y-m'), 'timezone' => $displayTz],
+        ]);
     }
 
     /**
@@ -257,6 +293,18 @@ class DashboardController extends Controller
 
         if ($role === 'account_manager') {
             return $this->amCounts($user);
+        }
+
+        // The accountant's badge is the proofs waiting for their decision.
+        if ($role === 'accountant') {
+            return response()->json([
+                'chat' => 0,
+                'contracts' => 0,
+                'approvals' => 0,
+                'payments' => Payment::where('status', 'pending')->count(),
+                'files' => 0,
+                'notifications' => $user->notifications()->whereNull('read_at')->count(),
+            ]);
         }
 
         return response()->json([

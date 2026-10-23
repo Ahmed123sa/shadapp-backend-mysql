@@ -38,7 +38,7 @@ class PaymentRejectionReasonTest extends TestCase
             'notes' => 'ملاحظات العميل الأصلية للدفعة',
         ]);
 
-        $response = $this->actingAs($manager)->postJson("/api/payments/{$payment->id}/review", [
+        $response = $this->actingAs(User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]))->postJson("/api/payments/{$payment->id}/review", [
             'action' => 'rejected',
             'rejection_reason' => 'إيصال التحويل غير مكتمل الأرقام',
         ]);
@@ -71,7 +71,7 @@ class PaymentRejectionReasonTest extends TestCase
             'rejection_reason' => 'سبب سابق',
         ]);
 
-        $response = $this->actingAs($manager)->postJson("/api/payments/{$payment->id}/review", [
+        $response = $this->actingAs(User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]))->postJson("/api/payments/{$payment->id}/review", [
             'action' => 'approved',
         ]);
 
@@ -110,7 +110,7 @@ class PaymentRejectionReasonTest extends TestCase
             'method_type' => 'bank_transfer',
         ]);
 
-        $response = $this->actingAs($manager)->postJson("/api/payments/{$payment->id}/review", [
+        $response = $this->actingAs(User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]))->postJson("/api/payments/{$payment->id}/review", [
             'action' => 'approved',
         ]);
 

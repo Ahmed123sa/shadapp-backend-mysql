@@ -66,6 +66,26 @@ class WorkspaceController extends Controller
             ]);
         }
 
+        // The accountant gets the money side of the workspace only: no chat,
+        // meetings, files or approvals.
+        if ($viewer instanceof \App\Models\User && $viewer->isAccountant()) {
+            $workspace->load(['client', 'manager:id,name,phone', 'payments']);
+
+            return response()->json([
+                'workspace' => [
+                    'id' => $workspace->id,
+                    'client_id' => $workspace->client_id,
+                    'manager_id' => $workspace->manager_id,
+                    'status' => $workspace->status,
+                    'client' => $workspace->client?->staffCard(),
+                    'manager' => $workspace->manager,
+                    'contracts' => $workspace->contracts()->latest()
+                        ->get(['id', 'workspace_id', 'title', 'status', 'value', 'currency', 'pdf_url', 'created_at']),
+                    'payments' => $workspace->payments,
+                ],
+            ]);
+        }
+
         $workspace->load([
             'client', 'manager', 'contracts.clauses', 'contracts.requiredDocuments', 'payments', 'approvals.certificate',
             'meetings', 'files', 'chatMessages.sender',

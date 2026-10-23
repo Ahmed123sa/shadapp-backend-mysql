@@ -79,6 +79,20 @@ class Client extends Authenticatable
     }
 
     /**
+     * What the accountant sees of a client: the same basic card as a staff
+     * member plus the money-side flags. No notes, signature, sub-users or
+     * contact history (ACCOUNTANT_ROLE_PLAN.md decision 5).
+     */
+    public function accountantCard(): array
+    {
+        return array_merge($this->staffCard(), [
+            'payment_status' => $this->payment_status,
+            'has_signed_contract' => (bool) ($this->has_signed_contract ?? false),
+            'is_archived' => $this->isArchived(),
+        ]);
+    }
+
+    /**
      * The dashboard shows this client's uuid in the browser URL instead of
      * its numeric id (see the 2026_09_07 migration for why). Everything that
      * already links or calls the API with the numeric id — the mobile app,

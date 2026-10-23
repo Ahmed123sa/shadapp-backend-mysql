@@ -45,7 +45,7 @@ class PaymentFlowTest extends TestCase
         $this->workspaceB = Workspace::factory()->create(['client_id' => $this->clientB->id, 'manager_id' => $this->managerA->id]);
     }
 
-    public function test_manager_can_approve_own_payment(): void
+    public function test_manager_cannot_approve_even_their_own_clients_payment(): void
     {
         $payment = Payment::factory()->create([
             'workspace_id' => $this->workspaceA->id,
@@ -53,11 +53,13 @@ class PaymentFlowTest extends TestCase
             'status' => 'pending',
         ]);
 
+        // Reviewing money is the super admin's and the accountant's job only
+        // (ACCOUNTANT_ROLE_PLAN.md §٩.٢): the apps never offered it to managers.
         $response = $this->actingAs($this->managerA)->postJson("/api/payments/{$payment->id}/review", [
             'action' => 'approved',
         ]);
-        $response->assertOk();
-        $this->assertEquals('approved', $payment->fresh()->status);
+        $response->assertForbidden();
+        $this->assertEquals('pending', $payment->fresh()->status);
     }
 
     public function test_super_admin_can_approve_any_payment(): void

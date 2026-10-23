@@ -70,7 +70,7 @@ class PaymentReviewActivationCharacterizationTest extends TestCase
             'status' => 'pending',
         ]);
 
-        $response = $this->actingAs($manager)->postJson("/api/payments/{$payment->id}/review", [
+        $response = $this->actingAs(User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]))->postJson("/api/payments/{$payment->id}/review", [
             'action' => 'approved',
         ]);
         $response->assertOk();
@@ -111,8 +111,9 @@ class PaymentReviewActivationCharacterizationTest extends TestCase
             'status' => 'pending',
         ]);
 
-        $response = $this->actingAs($manager)->postJson("/api/payments/{$payment->id}/review", [
+        $response = $this->actingAs(User::factory()->create(['role' => User::ROLE_SUPER_ADMIN]))->postJson("/api/payments/{$payment->id}/review", [
             'action' => 'rejected',
+            'rejection_reason' => 'سبب الرفض للاختبار',
         ]);
         $response->assertOk();
 
