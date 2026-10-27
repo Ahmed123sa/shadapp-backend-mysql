@@ -122,7 +122,13 @@ class NotificationController extends Controller
         $user = $subUser ? $subUser->client : $authUser;
 
         if (!$user) {
-            return response()->json(['notifications' => [], 'unread_count' => 0, 'unread_clients_count' => 0]);
+            return response()->json([
+                'notifications' => [],
+                'unread_count' => 0,
+                'unread_clients_count' => 0,
+                'unread_chat_count' => 0,
+                'unread_chat_clients_count' => 0,
+            ]);
         }
 
         // 11 Oct 2026 (performance) — this used to load EVERY notification
@@ -169,10 +175,27 @@ class NotificationController extends Controller
             ? Workspace::whereIn('id', array_unique($workspaceIdsNeeded))->pluck('client_id')->unique()->count()
             : 0;
 
+        // The home card "unread messages" must count chat messages only.
+        // unread_count above is every unread notification (approvals,
+        // contracts, payments...), which is what the bell shows. Chat
+        // notifications are cleared when the chat is opened (ChatController
+        // ::markAsRead), so this number drops back to 0 once they are read.
+        $unreadChat = $unread->filter(fn ($n) => ($n->data['type'] ?? null) === 'chat');
+        $chatWorkspaceIds = $unreadChat
+            ->map(fn ($n) => $resolve($n->data ?? []))
+            ->filter()
+            ->unique()
+            ->values();
+        $unreadChatClientsCount = $chatWorkspaceIds->isNotEmpty()
+            ? Workspace::whereIn('id', $chatWorkspaceIds)->pluck('client_id')->unique()->count()
+            : 0;
+
         return response()->json([
             'notifications' => $notifications,
             'unread_count' => $unread->count(),
             'unread_clients_count' => $unreadClientsCount,
+            'unread_chat_count' => $unreadChat->count(),
+            'unread_chat_clients_count' => $unreadChatClientsCount,
         ]);
     }
 

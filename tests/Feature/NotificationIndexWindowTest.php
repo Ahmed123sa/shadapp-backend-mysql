@@ -102,6 +102,44 @@ class NotificationIndexWindowTest extends TestCase
         Sanctum::actingAs($this->manager);
 
         $this->getJson('/api/notifications')->assertOk()
-            ->assertExactJson(['notifications' => [], 'unread_count' => 0, 'unread_clients_count' => 0]);
+            ->assertExactJson([
+                'notifications' => [],
+                'unread_count' => 0,
+                'unread_clients_count' => 0,
+                'unread_chat_count' => 0,
+                'unread_chat_clients_count' => 0,
+            ]);
+    }
+
+    public function test_the_unread_messages_card_counts_chat_only_and_clears_when_the_chat_is_read(): void
+    {
+        // Two approvals/contracts notifications and three chat ones: the bell
+        // keeps counting all five, the home card only the chat messages.
+        $this->note($this->mine, 1, read: false);
+        $this->note($this->mine, 2, read: false);
+        foreach ([3, 4, 5] as $m) {
+            $this->manager->notifications()->create([
+                'id' => (string) Str::uuid(),
+                'type' => 'App\\Notifications\\Test',
+                'data' => ['type' => 'chat', 'workspace_id' => $this->mine->id],
+                'read_at' => null,
+                'created_at' => now()->subMinutes($m),
+                'updated_at' => now()->subMinutes($m),
+            ]);
+        }
+        Sanctum::actingAs($this->manager);
+
+        $this->getJson('/api/notifications')->assertOk()
+            ->assertJsonPath('unread_count', 5)
+            ->assertJsonPath('unread_chat_count', 3)
+            ->assertJsonPath('unread_chat_clients_count', 1);
+
+        // Opening the chat marks that workspace's chat notifications read.
+        $this->postJson("/api/workspaces/{$this->mine->id}/chat/mark-read")->assertOk();
+
+        $this->getJson('/api/notifications')->assertOk()
+            ->assertJsonPath('unread_count', 2)
+            ->assertJsonPath('unread_chat_count', 0)
+            ->assertJsonPath('unread_chat_clients_count', 0);
     }
 }
