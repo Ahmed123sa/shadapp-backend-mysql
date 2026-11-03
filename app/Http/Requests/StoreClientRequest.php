@@ -28,6 +28,7 @@ class StoreClientRequest extends FormRequest
             'country' => 'nullable|string|max:100',
             'industry' => 'nullable|string|max:100',
             'client_type' => 'nullable|string|in:business,individual',
+            'tax_percentage' => 'nullable|numeric|between:0,100',
             'notes' => 'nullable|string',
             'address' => 'nullable|string|max:1000',
             'maps_url' => 'nullable|string|max:1000',

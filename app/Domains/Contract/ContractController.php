@@ -339,7 +339,9 @@ class ContractController extends Controller
     {
         $this->authorize('send', $contract);
 
-        $contract->update(['status' => 'sent']);
+        // A re-sent contract is priced again from the client's current %; it
+        // locks only when the client approves it.
+        $contract->update(['status' => 'sent', 'tax_percentage' => null]);
 
         event(new ContractSent($contract));
         ContractStatusChanged::dispatch($contract);
@@ -425,6 +427,9 @@ class ContractController extends Controller
             // See ContractPdfService for how this is used when rendering.
             'client_signature_data' => $request->action === 'approved' ? $signature : null,
             'edit_reason' => $request->action === 'edit_requested' ? ($request->reason ?? null) : null,
+            // Lock the tax % at the moment of approval (server-side only);
+            // an edit request opens it up again until the next approval.
+            'tax_percentage' => $request->action === 'approved' ? $this->lockedTax($contract) : null,
         ]);
 
         // `client_id` here is the contract's owning client — not
@@ -465,6 +470,14 @@ class ContractController extends Controller
         ContractStatusChanged::dispatch($contract);
 
         return response()->json(['contract' => $contract->fresh()]);
+    }
+
+    /** The % to freeze on a contract being approved now: 0 for individuals. */
+    private function lockedTax(Contract $contract): float
+    {
+        $contract->setRelation('workspace', $contract->workspace);
+
+        return $contract->effectiveTaxPercentage(ignoreLock: true);
     }
 
     public function companyApprove(Request $request, Contract $contract): JsonResponse

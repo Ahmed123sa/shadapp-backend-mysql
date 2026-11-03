@@ -51,25 +51,9 @@ class SettingsController extends Controller
         $workspace = \App\Models\Workspace::with('client')->findOrFail($workspaceId);
         abort_unless($workspace->canBeAccessedBy($request->user()), 403, 'غير مصرح لك بالوصول إلى مساحة العمل هذه');
 
-        $contractsTotal = $workspace->contracts()
-            ->whereIn('status', ['client_approved', 'company_approved', 'completed'])
-            ->sum('value');
+        $summary = \App\Support\WorkspaceTaxSummary::for($workspace, ['client_approved', 'company_approved', 'completed']);
 
-        $taxPercentage = 0;
-        try {
-            $taxPercentage = (float) SystemSetting::getValue('corporate_tax_percentage', 0);
-        } catch (\Exception $e) {
-            $taxPercentage = 0;
-        }
-        $isBusiness = $workspace->client && $workspace->client->client_type === 'business';
-
-        $taxAmount = $isBusiness ? ($contractsTotal * $taxPercentage / 100) : 0;
-
-        return response()->json([
-            'contracts_total' => (float) $contractsTotal,
-            'tax_percentage' => $isBusiness ? $taxPercentage : 0,
-            'tax_amount' => $taxAmount,
-            'grand_total' => $contractsTotal + $taxAmount,
+        return response()->json($summary + [
             'client_type' => $workspace->client?->client_type ?? 'business',
         ]);
     }

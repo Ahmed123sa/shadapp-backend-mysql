@@ -23,16 +23,9 @@ class ContractPdfService
 
         $requiredDocs = $contract->requiredDocuments()->get();
 
-        $taxPercentage = 0;
-        $taxAmount = 0;
-        if ($client->client_type === 'business' && $contract->value > 0) {
-            try {
-                $taxPercentage = (float) SystemSetting::getValue('corporate_tax_percentage', 0);
-            } catch (\Exception $e) {
-                $taxPercentage = 0;
-            }
-            $taxAmount = (float) $contract->value * $taxPercentage / 100;
-        }
+        $contract->setRelation('workspace', $contract->workspace);
+        $taxPercentage = $contract->value > 0 ? $contract->tax_percentage : 0;
+        $taxAmount = $contract->value > 0 ? $contract->tax_amount : 0;
 
         $currency = $contract->currency ?: 'SAR';
         $currencyMap = [

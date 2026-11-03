@@ -30,6 +30,7 @@ class UpdateClientRequest extends FormRequest
             'date_of_birth' => 'nullable|date',
             'status' => 'in:active,inactive,blocked',
             'client_type' => 'nullable|string|in:business,individual',
+            'tax_percentage' => 'nullable|numeric|between:0,100',
         ];
     }
 }

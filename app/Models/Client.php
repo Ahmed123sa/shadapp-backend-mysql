@@ -21,7 +21,7 @@ class Client extends Authenticatable
         'company_name', 'contact_person', 'email', 'phone', 'password',
         'manager_id', 'status', 'notes', 'country', 'industry', 'client_type',
         'contract_value', 'payment_status', 'signature_data', 'signed_at',
-        'avatar_url', 'date_of_birth',
+        'avatar_url', 'date_of_birth', 'tax_percentage',
         'latitude', 'longitude', 'location_address', 'location_updated_at', 'location_updated_by_ip',
         'address', 'maps_url',
     ];
@@ -63,6 +63,7 @@ class Client extends Authenticatable
             'email' => $this->email,
             'phone' => $this->phone,
             'client_type' => $this->client_type,
+            'tax_percentage' => $this->client_type === 'business' ? $this->tax_percentage : null,
             'status' => $this->status,
             'avatar_url' => $this->avatar_url,
             'country' => $this->country,
@@ -129,6 +130,7 @@ class Client extends Authenticatable
         return [
             'password' => 'hashed',
             'contract_value' => 'decimal:2',
+            'tax_percentage' => 'float',
             'signed_at' => 'datetime',
             'date_of_birth' => 'date',
             'latitude' => 'decimal:7',

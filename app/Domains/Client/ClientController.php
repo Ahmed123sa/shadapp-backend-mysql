@@ -128,6 +128,7 @@ class ClientController extends Controller
             'country' => $request->country,
             'industry' => $request->industry,
             'client_type' => $request->client_type ?? 'business',
+            'tax_percentage' => ($request->client_type ?? 'business') === 'business' ? $this->startingTax($request) : null,
             'notes' => $request->notes,
             'address' => $request->address,
             'maps_url' => $request->maps_url,
@@ -209,9 +210,58 @@ class ClientController extends Controller
             $fillableFields[] = 'password';
         }
 
-        $client->update($request->only($fillableFields));
+        $oldTax = $client->tax_percentage;
+        $client->fill($request->only($fillableFields));
+
+        // The tax % is set by the super admin or the client's own account
+        // manager only — never by the client, a sub-user or an assistant.
+        if ($request->has('tax_percentage')) {
+            abort_unless($this->canSetTax($request->user(), $client), 403, 'مش مسموح لك تعدل نسبة الضريبة');
+            $client->tax_percentage = $request->input('tax_percentage');
+        }
+        // A business client always has a %; an individual has none.
+        if ($client->client_type === 'business') {
+            if ($client->tax_percentage === null) {
+                $client->tax_percentage = $this->globalTax();
+            }
+        } else {
+            $client->tax_percentage = null;
+        }
+        $client->save();
+
+        if ((float) $oldTax !== (float) $client->tax_percentage) {
+            AuditLog::create([
+                'auditable_type' => Client::class,
+                'auditable_id' => $client->id,
+                'client_id' => $client->id,
+                'user_id' => $request->user() instanceof User ? $request->user()->id : null,
+                'action' => 'client.tax_updated',
+                'metadata' => ['old' => $oldTax, 'new' => $client->tax_percentage],
+                'ip_address' => $request->ip(),
+            ]);
+        }
 
         return response()->json(['client' => $client->fresh()->load('workspace')]);
+    }
+
+    private function canSetTax($user, Client $client): bool
+    {
+        return $user instanceof User
+            && ($user->isSuperAdmin() || (! $user->isAssistant() && $client->manager_id === $user->id));
+    }
+
+    private function globalTax(): float
+    {
+        try {
+            return (float) \App\Models\SystemSetting::getValue('corporate_tax_percentage', 0);
+        } catch (\Exception $e) {
+            return 0.0;
+        }
+    }
+
+    private function startingTax(Request $request): float
+    {
+        return $request->filled('tax_percentage') ? (float) $request->tax_percentage : $this->globalTax();
     }
 
     public function sign(Request $request, Client $client): JsonResponse
