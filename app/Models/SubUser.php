@@ -87,6 +87,9 @@ class SubUser extends Authenticatable
         if (str_starts_with($type, 'contract')) {
             return $this->hasPermission('can_view_contracts');
         }
+        if (str_starts_with($type, 'file')) {
+            return $this->hasPermission('can_view_files');
+        }
         if (str_starts_with($type, 'payment') || $type === 'workspace_activated') {
             return $this->hasPermission('can_view_payments');
         }

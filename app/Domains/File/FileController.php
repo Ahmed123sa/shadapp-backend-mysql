@@ -36,7 +36,7 @@ class FileController extends Controller
 
     public function index(Workspace $workspace): JsonResponse
     {
-        $files = $workspace->files()->with('documentDefinition', 'reviewer')->latest()->get();
+        $files = $workspace->files()->with('documentDefinition', 'reviewer', 'contractRequiredDocument.contract')->latest()->get();
         $definitions = $workspace->documentDefinitions()->orderBy('sort_order')->get();
 
         $files->each(function ($file) {
@@ -73,7 +73,8 @@ class FileController extends Controller
             return $file->documentDefinition->name;
         }
         if ($file->contractRequiredDocument) {
-            return 'مستند مطلوب';
+            $contractTitle = $file->contractRequiredDocument->contract?->title;
+            return 'مستند: ' . $file->contractRequiredDocument->name . ($contractTitle ? ' · ' . $contractTitle : '');
         }
         if ($file->contract_id) {
             return 'مرفق عقد';
@@ -120,7 +121,52 @@ class FileController extends Controller
         }
         AuditLog::create($auditData);
 
+        // A client (or sub-user) uploading for one of a contract's required
+        // documents: tell the people who have to review it. Never fails the
+        // upload itself.
+        if ($file->contract_required_document_id !== null && ! ($request->user() instanceof \App\Models\User)) {
+            $this->notifyDocumentUploaded($file);
+        }
+
         return response()->json(['file' => $file->load('documentDefinition')], 201);
+    }
+
+    /**
+     * The client's own manager and the super admins; nobody else.
+     */
+    private function notifyDocumentUploaded(FileEntry $file): void
+    {
+        try {
+            $file->loadMissing('workspace.client', 'workspace.manager', 'contractRequiredDocument.contract');
+
+            $recipients = collect();
+            $manager = $file->workspace?->manager;
+            if ($manager && $manager->isActive()) {
+                $recipients->push($manager);
+            }
+            foreach (\App\Models\User::where('role', \App\Models\User::ROLE_SUPER_ADMIN)->get() as $admin) {
+                $recipients->push($admin);
+            }
+
+            foreach ($recipients->unique('id') as $user) {
+                $user->notify(new \App\Notifications\ContractDocumentUploadedNotification($file));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to notify about an uploaded contract document: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * The client is told a file was rejected and why. Never fails the review.
+     */
+    private function notifyFileRejected(FileEntry $file): void
+    {
+        try {
+            $file->loadMissing('workspace.client', 'contractRequiredDocument');
+            $file->workspace?->client?->notify(new \App\Notifications\FileRejectedNotification($file));
+        } catch (\Throwable $e) {
+            Log::warning('Failed to notify the client about a rejected file: ' . $e->getMessage());
+        }
     }
 
     public function review(Request $request, FileEntry $file): JsonResponse
@@ -170,6 +216,10 @@ class FileController extends Controller
             $auditData['user_id'] = $request->user()->id;
         }
         AuditLog::create($auditData);
+
+        if ($request->action === 'rejected') {
+            $this->notifyFileRejected($file->fresh());
+        }
 
         return response()->json(['file' => $file->fresh()->load('documentDefinition', 'reviewer')]);
     }

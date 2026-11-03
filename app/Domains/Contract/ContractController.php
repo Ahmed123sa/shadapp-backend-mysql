@@ -502,6 +502,19 @@ class ContractController extends Controller
             ], 422);
         }
 
+        // The company can only approve once every required document has an
+        // approved file. A file that is still pending review, was rejected or
+        // was never uploaded all block it. The client's own approval is not
+        // held up by this (see clientAction).
+        $notApproved = $this->requiredDocumentsNotApproved($contract);
+        if ($notApproved->isNotEmpty()) {
+            return response()->json([
+                'message' => 'لازم تراجع وتقبل المستندات المطلوبة الأول: ' . $notApproved->pluck('name')->implode('، '),
+                'code' => 'required_documents_not_approved',
+                'documents' => $notApproved->values(),
+            ], 422);
+        }
+
         $sigType = (str_starts_with($signature, '/storage/') || str_starts_with($signature, 'http') || str_starts_with($signature, '/api/storage/')) ? 'image' : 'text';
 
         $workspace = $contract->workspace->fresh();
@@ -543,6 +556,35 @@ class ContractController extends Controller
         ]);
 
         return response()->json(['contract' => $contract->fresh()->load('workspace.payments')]);
+    }
+
+    /**
+     * The required documents that do not yet have an approved file, each with
+     * why: missing (nothing uploaded), pending (waiting for review) or
+     * rejected (every file was rejected).
+     *
+     * @return \Illuminate\Support\Collection<int, array{id:int,name:string,state:string}>
+     */
+    private function requiredDocumentsNotApproved(Contract $contract): \Illuminate\Support\Collection
+    {
+        return $contract->requiredDocuments()
+            ->where('is_required', true)
+            ->with('files')
+            ->orderBy('sort_order')
+            ->get()
+            ->map(function ($doc) {
+                $statuses = $doc->files->pluck('status');
+                if ($statuses->contains('approved')) {
+                    return null;
+                }
+                $state = $statuses->isEmpty()
+                    ? 'missing'
+                    : ($statuses->every(fn ($s) => $s === 'rejected') ? 'rejected' : 'pending');
+
+                return ['id' => $doc->id, 'name' => $doc->name, 'state' => $state];
+            })
+            ->filter()
+            ->values();
     }
 
     /**
