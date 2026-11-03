@@ -228,29 +228,12 @@ class PaymentController extends Controller
         $client = $workspace->client;
         $methods = self::ALL_METHODS;
 
-        $contractsTotal = $workspace->contracts()
-            ->whereIn('status', ['company_approved', 'completed'])
-            ->sum('value');
-
-        $taxPercentage = 0;
-        $isBusiness = $client->client_type === 'business';
-        try {
-            $taxPercentage = (float) SystemSetting::getValue('corporate_tax_percentage', 0);
-        } catch (\Exception $e) {
-            $taxPercentage = 0;
-        }
-        $taxAmount = $isBusiness ? ($contractsTotal * $taxPercentage / 100) : 0;
-
         return response()->json([
             'payments' => $workspace->payments()->with('contract')->latest()->get(),
             'available_methods' => $methods,
             'client_type' => $client->client_type,
-            'tax_summary' => [
-                'contracts_total' => (float) $contractsTotal,
-                'tax_percentage' => $isBusiness ? $taxPercentage : 0,
-                'tax_amount' => $taxAmount,
-                'grand_total' => $contractsTotal + $taxAmount,
-            ],
+            // Same figure the client assistant reads (App\Support\WorkspaceTaxSummary).
+            'tax_summary' => \App\Support\WorkspaceTaxSummary::for($workspace),
         ]);
     }
 

@@ -22,6 +22,8 @@ use App\Domains\Team\TeamController;
 use App\Domains\Staff\ManagerTeamController;
 use App\Domains\Staff\StaffController;
 use App\Domains\Staff\AccountantController;
+use App\Domains\Assistant\AssistantSettingsController;
+use App\Domains\Assistant\ClientAssistantController;
 use App\Domains\Staff\WorkspaceStaffController;
 use App\Domains\Dashboard\DashboardController;
 use App\Domains\Settings\SettingsController;
@@ -109,6 +111,10 @@ Route::middleware(['auth.any:sanctum,client,sub_user', 'restrict.roles', 'thrott
     Route::post('/approvals/{approval}/respond', [ApprovalController::class, 'respond'])->middleware('not.assistant');
     Route::get('/workspaces/{workspace}/meetings', [MeetingController::class, 'index']);
 
+    // Client assistant (CLIENT_ASSISTANT_PLAN.md). Read only; the controller
+    // refuses staff and answers {enabled:false} while the feature is off.
+    Route::get('/workspaces/{workspace}/assistant', [ClientAssistantController::class, 'show']);
+
     // Files — client needs to upload/download too
     Route::get('/workspaces/{workspace}/files', [FileController::class, 'index'])->middleware('assistant.can:can_view_files');
     Route::post('/workspaces/{workspace}/files', [FileController::class, 'upload'])->middleware('subuser.can:can_upload_files');
@@ -166,6 +172,15 @@ Route::middleware(['auth:sanctum', 'restrict.roles', 'throttle:authenticated', '
     Route::patch('/accountants/{accountant}/password', [AccountantController::class, 'changePassword'])->middleware('not.assistant');
     Route::post('/accountants/{accountant}/deactivate', [AccountantController::class, 'deactivate'])->middleware('not.assistant');
     Route::post('/accountants/{accountant}/activate', [AccountantController::class, 'activate'])->middleware('not.assistant');
+
+    // Client assistant settings: super admin only (checked in the controller).
+    Route::get('/assistant/questions', [AssistantSettingsController::class, 'index'])->middleware('not.assistant');
+    Route::post('/assistant/questions', [AssistantSettingsController::class, 'store'])->middleware('not.assistant');
+    Route::post('/assistant/questions/reorder', [AssistantSettingsController::class, 'reorder'])->middleware('not.assistant');
+    Route::post('/assistant/preview', [AssistantSettingsController::class, 'preview'])->middleware('not.assistant');
+    Route::put('/assistant/questions/{question}', [AssistantSettingsController::class, 'update'])->middleware('not.assistant');
+    Route::delete('/assistant/questions/{question}', [AssistantSettingsController::class, 'destroy'])->middleware('not.assistant');
+    Route::post('/assistant/questions/{question}/reset', [AssistantSettingsController::class, 'reset'])->middleware('not.assistant');
 
     // The "Team" tab inside a client's workspace: which staff work on this
     // client. The workspace's own manager or the super admin only.
