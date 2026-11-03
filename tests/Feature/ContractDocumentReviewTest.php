@@ -275,4 +275,15 @@ class ContractDocumentReviewTest extends TestCase
 
         $this->assertSame('مستند: البطاقة · Remax SEO', $tag);
     }
+
+    public function test_the_file_list_also_returns_an_english_tag_and_keeps_typed_names_as_they_are(): void
+    {
+        $this->fileFor($this->requiredDoc('البطاقة'), 'pending');
+        Sanctum::actingAs($this->superAdmin);
+
+        $json = $this->getJson("/api/workspaces/{$this->workspace->id}/files")->assertOk()->json('files.0');
+
+        $this->assertSame('Document: البطاقة · Remax SEO', $json['tag_en']);
+        $this->assertSame('مستند: البطاقة · Remax SEO', $json['tag']);
+    }
 }

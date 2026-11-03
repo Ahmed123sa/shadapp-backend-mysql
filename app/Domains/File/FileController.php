@@ -41,6 +41,7 @@ class FileController extends Controller
 
         $files->each(function ($file) {
             $file->tag = $this->computeTag($file);
+            $file->tag_en = $this->computeTag($file, 'en');
         });
 
         $payments = $workspace->payments()
@@ -53,7 +54,9 @@ class FileController extends Controller
                     'id' => 'payment-' . $payment->id,
                     'payment_id' => $payment->id,
                     'name' => 'إثبات دفع #' . $payment->id,
+                    'name_en' => 'Payment proof #' . $payment->id,
                     'tag' => 'إثبات الدفع',
+                    'tag_en' => 'Payment proof',
                     'file_url' => $urls[0] ?? null,
                     'file_urls' => $urls,
                     'amount' => $payment->amount,
@@ -67,22 +70,27 @@ class FileController extends Controller
         return response()->json(['files' => $files, 'definitions' => $definitions, 'paymentFiles' => $payments]);
     }
 
-    private function computeTag(FileEntry $file): string
+    /**
+     * Display tag for a file. Fixed system words are translated; names typed by
+     * users (document definition, required document, contract title) are kept as is.
+     */
+    private function computeTag(FileEntry $file, string $lang = 'ar'): string
     {
+        $en = $lang === 'en';
         if ($file->documentDefinition) {
             return $file->documentDefinition->name;
         }
         if ($file->contractRequiredDocument) {
             $contractTitle = $file->contractRequiredDocument->contract?->title;
-            return 'مستند: ' . $file->contractRequiredDocument->name . ($contractTitle ? ' · ' . $contractTitle : '');
+            return ($en ? 'Document: ' : 'مستند: ') . $file->contractRequiredDocument->name . ($contractTitle ? ' · ' . $contractTitle : '');
         }
         if ($file->contract_id) {
-            return 'مرفق عقد';
+            return $en ? 'Contract attachment' : 'مرفق عقد';
         }
         if ($file->approval_id) {
-            return 'مرفق موافقة';
+            return $en ? 'Approval attachment' : 'مرفق موافقة';
         }
-        return 'عام';
+        return $en ? 'General' : 'عام';
     }
 
     public function upload(Request $request, Workspace $workspace): JsonResponse
