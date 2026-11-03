@@ -103,6 +103,24 @@ class ContractPdfSignatureTest extends TestCase
         $this->assertStringNotContainsString('<img', $html);
     }
 
+    public function test_the_company_is_the_first_party_and_the_client_the_second(): void
+    {
+        $html = $this->renderContractView([
+            'companySignature' => 'Manager Name',
+            'companySignatureIsImage' => false,
+            'companyImagePath' => null,
+        ]);
+
+        $first = strpos($html, 'الطرف الأول (الشركة)');
+        $second = strpos($html, 'الطرف الثاني (العميل)');
+
+        $this->assertNotFalse($first);
+        $this->assertNotFalse($second);
+        $this->assertLessThan($second, $first);
+        $this->assertStringNotContainsString('الطرف الأول (العميل)', $html);
+        $this->assertStringNotContainsString('الطرف الثاني (الشركة)', $html);
+    }
+
     public function test_company_sig_box_still_renders_placeholder_when_no_signature(): void
     {
         $html = $this->renderContractView([

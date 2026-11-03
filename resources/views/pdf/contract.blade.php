@@ -69,18 +69,7 @@
 
     <div class="signatures" style="text-align: center;">
         <div class="sig-box">
-            <h3>الطرف الأول (العميل)</h3>
-            @if($clientSignatureIsImage && $clientImagePath)
-                <img src="{{ $clientImagePath }}" class="sig-image" alt="توقيع العميل" />
-            @elseif($clientSignature)
-                <div class="sig-text">{{ $clientSignature }}</div>
-            @else
-                <div class="sig-text" style="color:#ccc;">________________</div>
-            @endif
-            <div class="date">{{ $client->company_name }} — {{ $contract->client_signed_at ? $contract->client_signed_at->format('Y-m-d') : '' }}</div>
-        </div>
-        <div class="sig-box">
-            <h3>الطرف الثاني (الشركة)</h3>
+            <h3>الطرف الأول (الشركة)</h3>
             @if($companySignatureIsImage && $companyImagePath)
                 <img src="{{ $companyImagePath }}" class="sig-image" alt="توقيع الشركة" />
             @elseif($companySignature)
@@ -89,6 +78,17 @@
                 <div class="sig-text" style="color:#ccc;">________________</div>
             @endif
             <div class="date">{{ $manager->name ?? '' }} — {{ $contract->company_signed_at ? $contract->company_signed_at->format('Y-m-d') : '' }}</div>
+        </div>
+        <div class="sig-box">
+            <h3>الطرف الثاني (العميل)</h3>
+            @if($clientSignatureIsImage && $clientImagePath)
+                <img src="{{ $clientImagePath }}" class="sig-image" alt="توقيع العميل" />
+            @elseif($clientSignature)
+                <div class="sig-text">{{ $clientSignature }}</div>
+            @else
+                <div class="sig-text" style="color:#ccc;">________________</div>
+            @endif
+            <div class="date">{{ $client->company_name }} — {{ $contract->client_signed_at ? $contract->client_signed_at->format('Y-m-d') : '' }}</div>
         </div>
     </div>
 
