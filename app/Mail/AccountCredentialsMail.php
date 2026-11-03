@@ -32,7 +32,7 @@ class AccountCredentialsMail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'بيانات دخولك إلى ShadApp');
+        return new Envelope(subject: 'بيانات دخولك إلى ShadApp | Your ShadApp sign-in details');
     }
 
     public function content(): Content

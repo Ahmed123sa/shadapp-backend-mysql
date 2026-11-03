@@ -24,7 +24,7 @@ class ContractCompletedMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'تم إكمال العقد: ' . $this->contract->title,
+            subject: 'تم إكمال العقد | Contract completed: ' . $this->contract->title,
         );
     }
 

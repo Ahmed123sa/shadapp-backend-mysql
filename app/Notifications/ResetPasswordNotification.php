@@ -51,7 +51,7 @@ class ResetPasswordNotification extends Notification implements ShouldQueue
         $minutes = config("auth.passwords.{$broker}.expire", 60);
 
         return (new MailMessage)
-            ->subject('إعادة تعيين كلمة المرور - ShadApp')
+            ->subject('إعادة تعيين كلمة المرور | Reset your password - ShadApp')
             ->view('emails.reset-password', [
                 'url' => $url,
                 'minutes' => $minutes,

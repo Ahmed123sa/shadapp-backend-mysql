@@ -24,7 +24,7 @@ class PaymentCreatedMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'تم إنشاء دفعة جديدة: ' . number_format($this->payment->amount, 2) . ' ر.س',
+            subject: 'تم إنشاء دفعة جديدة | New payment: ' . number_format($this->payment->amount, 2) . ' ر.س / SAR',
         );
     }
 

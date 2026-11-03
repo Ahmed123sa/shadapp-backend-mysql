@@ -24,7 +24,7 @@ class ApprovalCertificateMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'شهادة الموافقة: ' . ($this->approval->reference_no ?? ''),
+            subject: 'شهادة الموافقة | Approval certificate: ' . ($this->approval->reference_no ?? ''),
         );
     }
 

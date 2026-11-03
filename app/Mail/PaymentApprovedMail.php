@@ -24,7 +24,7 @@ class PaymentApprovedMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'تم اعتماد الدفعة: ' . number_format($this->payment->amount, 2) . ' ر.س',
+            subject: 'تم اعتماد الدفعة | Payment approved: ' . number_format($this->payment->amount, 2) . ' ر.س / SAR',
         );
     }
 

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html dir="rtl"><body style="font-family: sans-serif; line-height: 1.6;">
+<html><body style="font-family: sans-serif; line-height: 1.6;">
+<div dir="rtl" style="text-align: right;">
 <h2>تم إرسال العقد</h2>
 <p>السلام عليكم،</p>
 <p>تم إرسال عقد "{{ $contract->title }}" للمراجعة.</p>
@@ -13,4 +14,21 @@
 </ul>
 @endif
 <p>تاريخ الإرسال: {{ \App\Support\DisplayTime::format(now()) }}</p>
+</div>
+<hr style="margin: 24px 0; border: 0; border-top: 1px solid #dddddd;">
+<div dir="ltr" style="text-align: left;">
+<h2>Contract sent</h2>
+<p>Hello,</p>
+<p>The contract "{{ $contract->title }}" was sent for review.</p>
+<p>Contract value: {{ number_format($contract->value, 2) }} SAR</p>
+@if($contract->requiredDocuments->count() > 0)
+<h3 style="margin-top:20px;">Required documents</h3>
+<ul>
+@foreach($contract->requiredDocuments as $doc)
+<li>{{ $doc->name }} @if($doc->is_required) (required) @endif</li>
+@endforeach
+</ul>
+@endif
+<p>Sent on: {{ \App\Support\DisplayTime::format(now()) }}</p>
+</div>
 </body></html>

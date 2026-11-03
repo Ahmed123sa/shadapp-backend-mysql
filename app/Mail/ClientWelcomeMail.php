@@ -42,7 +42,7 @@ class ClientWelcomeMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'مرحباً بك في ShadApp',
+            subject: 'مرحباً بك في ShadApp | Welcome to ShadApp',
         );
     }
 

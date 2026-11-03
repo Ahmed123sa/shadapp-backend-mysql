@@ -24,7 +24,7 @@ class MeetingScheduledMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'موعد اجتماع: ' . $this->meeting->title,
+            subject: 'موعد اجتماع | Meeting scheduled: ' . $this->meeting->title,
         );
     }
 

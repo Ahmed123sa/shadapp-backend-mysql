@@ -26,7 +26,7 @@ class ContractReminderMail extends Mailable implements ShouldQueue
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'تذكير: العقد ' . $this->contract->title . ' ينتظر مراجعتك',
+            subject: 'تذكير: العقد ' . $this->contract->title . ' ينتظر مراجعتك | Reminder: contract ' . $this->contract->title . ' awaits your review',
         );
     }
 
