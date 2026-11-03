@@ -90,9 +90,20 @@ class FileController extends Controller
         $request->validate([
             'file' => UploadRules::document(required: true),
             'name' => 'nullable|string|max:255',
-            'document_definition_id' => 'nullable|exists:document_definitions,id',
-            'contract_id' => 'nullable|exists:contracts,id',
-            'contract_required_document_id' => 'nullable|exists:contract_required_documents,id',
+            // Every id must belong to THIS workspace. Without the scope a client
+            // could attach a file to another client's contract or required
+            // document, satisfying (or blocking) that contract's approval.
+            'document_definition_id' => ['nullable', \Illuminate\Validation\Rule::exists('document_definitions', 'id')->where('workspace_id', $workspace->id)],
+            'contract_id' => ['nullable', \Illuminate\Validation\Rule::exists('contracts', 'id')->where('workspace_id', $workspace->id)],
+            'contract_required_document_id' => ['nullable', function ($attribute, $value, $fail) use ($workspace) {
+                $belongs = ContractRequiredDocument::query()
+                    ->whereKey($value)
+                    ->whereHas('contract', fn ($q) => $q->where('workspace_id', $workspace->id))
+                    ->exists();
+                if (! $belongs) {
+                    $fail('The selected contract required document id is invalid.');
+                }
+            }],
         ]);
 
         $path = $request->file('file')->store('workspace-' . $workspace->id, 'public');
