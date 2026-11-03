@@ -20,6 +20,8 @@ class ContractSentNotification extends BaseNotification
             'contract_id' => $this->contract->id,
             'title' => $this->contract->title,
             'message' => "تم إرسال عقد: {$this->contract->title}",
+            'title_en' => $this->contract->title,
+            'message_en' => "Contract sent: {$this->contract->title}",
             'workspace_id' => $this->contract->workspace_id,
             'client_id' => $this->contract->workspace?->client_id,
         ];
@@ -30,6 +32,8 @@ class ContractSentNotification extends BaseNotification
         return [
             'title' => 'عقد جديد',
             'body' => "تم إرسال عقد {$this->contract->title}",
+            'title_en' => 'New contract',
+            'body_en' => "Contract {$this->contract->title} was sent",
             'data' => [
                 'type' => 'contract',
                 'id' => (string) $this->contract->id,

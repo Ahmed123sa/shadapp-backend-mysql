@@ -47,6 +47,8 @@ class ChatMessageSentNotification extends BaseNotification
             'text' => $this->message->message ?? '',
             'title' => $senderName,
             'message' => "رسالة جديدة من {$senderName}",
+            'title_en' => $this->message->sender?->name ?? 'User',
+            'message_en' => 'New message from ' . ($this->message->sender?->name ?? 'User'),
         ];
     }
 
@@ -56,6 +58,8 @@ class ChatMessageSentNotification extends BaseNotification
         return [
             'title' => 'رسالة جديدة',
             'body' => "{$senderName}: {$this->message->message}",
+            'title_en' => 'New message',
+            'body_en' => ($this->message->sender?->name ?? 'User') . ": {$this->message->message}",
             'data' => [
                 'type' => 'chat',
                 'workspace_id' => (string) $this->message->workspace_id,

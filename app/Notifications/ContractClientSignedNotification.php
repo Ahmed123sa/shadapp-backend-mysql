@@ -23,6 +23,8 @@ class ContractClientSignedNotification extends BaseNotification
             'client_id' => $workspace->client_id,
             'title' => 'توقيع إلكتروني',
             'message' => 'قام العميل ' . ($workspace->client->company_name ?? '') . ' بتوقيع العقد إلكترونيًا: ' . $this->contract->title,
+            'title_en' => 'E-signature',
+            'message_en' => 'Client ' . ($workspace->client->company_name ?? '') . ' signed the contract electronically: ' . $this->contract->title,
         ];
     }
 
@@ -32,6 +34,8 @@ class ContractClientSignedNotification extends BaseNotification
         return [
             'title' => 'توقيع إلكتروني',
             'body' => 'قام العميل ' . ($workspace->client->company_name ?? '') . ' بتوقيع العقد إلكترونيًا: ' . $this->contract->title,
+            'title_en' => 'E-signature',
+            'body_en' => 'Client ' . ($workspace->client->company_name ?? '') . ' signed the contract electronically: ' . $this->contract->title,
             'data' => [
                 'type' => 'contract_client_signed',
                 'contract_id' => (string) $this->contract->id,

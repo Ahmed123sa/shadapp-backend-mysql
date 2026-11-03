@@ -19,12 +19,19 @@ class PaymentReminderNotification extends BaseNotification
             'today' => 'تذكير: دفعة مستحقة اليوم',
             'overdue' => 'تنبيه: دفعة متأخرة عن موعد الاستحقاق',
         ];
-
+        $titlesEn = [
+            '3_days' => 'Reminder: a payment is due in 3 days',
+            'today' => 'Reminder: a payment is due today',
+            'overdue' => 'Alert: a payment is past its due date',
+        ];
         $body = number_format((float) $this->payment->amount, 2) . ' ' . $currency . ' — ' . ($this->payment->installment_label ?? '');
 
         return [
             'type' => 'payment_reminder',
             'title' => $messages[$this->reminderType] ?? 'تذكير بالدفع',
+            'title_en' => $titlesEn[$this->reminderType] ?? 'Payment reminder',
+            'body_en' => $body,
+            'message_en' => $body,
             'body' => $body,
             'message' => $body,
             'payment_id' => $this->payment->id,
@@ -46,6 +53,12 @@ class PaymentReminderNotification extends BaseNotification
 
         return [
             'title' => $messages[$this->reminderType] ?? 'تذكير بالدفع',
+            'title_en' => [
+                '3_days' => 'Reminder: a payment is due in 3 days',
+                'today' => 'Reminder: a payment is due today',
+                'overdue' => 'Alert: a payment is overdue',
+            ][$this->reminderType] ?? 'Payment reminder',
+            'body_en' => number_format((float) $this->payment->amount, 2) . ' ' . $currency,
             'body' => number_format((float) $this->payment->amount, 2) . ' ' . $currency,
             'data' => [
                 'type' => 'payment_reminder',

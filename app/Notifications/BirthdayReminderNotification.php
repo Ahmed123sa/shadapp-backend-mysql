@@ -22,6 +22,9 @@ class BirthdayReminderNotification extends BaseNotification
             'title' => 'تذكير: عيد ميلاد العميل',
             'body' => "غداً عيد ميلاد العميل {$this->client->contact_person}",
             'message' => "غداً عيد ميلاد العميل {$this->client->contact_person}",
+            'title_en' => 'Reminder: client birthday',
+            'body_en' => "Tomorrow is the birthday of client {$this->client->contact_person}",
+            'message_en' => "Tomorrow is the birthday of client {$this->client->contact_person}",
             'client_id' => $this->client->id,
             // plans/notifications-badges-toasts-plan.md ن3 — same reasoning
             // as MeetingReminderNotification. GET /notifications' manager
@@ -36,6 +39,8 @@ class BirthdayReminderNotification extends BaseNotification
         return [
             'title' => 'تذكير: عيد ميلاد العميل',
             'body' => "غداً عيد ميلاد {$this->client->contact_person}",
+            'title_en' => 'Reminder: client birthday',
+            'body_en' => "Tomorrow is the birthday of {$this->client->contact_person}",
             'data' => [
                 'type' => 'birthday_reminder',
                 'client_id' => (string) $this->client->id,

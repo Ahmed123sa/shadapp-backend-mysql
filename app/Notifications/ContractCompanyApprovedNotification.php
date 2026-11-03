@@ -20,6 +20,8 @@ class ContractCompanyApprovedNotification extends BaseNotification
             'contract_id' => $this->contract->id,
             'title' => 'تم اعتماد العقد نهائياً',
             'message' => 'تم اعتماد العقد ' . $this->contract->title . ' من الطرفين. يمكنك الآن الدفع.',
+            'title_en' => 'Contract fully approved',
+            'message_en' => 'Contract ' . $this->contract->title . ' was approved by both parties. You can now pay.',
             'workspace_id' => $this->contract->workspace_id,
             'client_id' => $this->contract->workspace?->client_id,
         ];
@@ -30,6 +32,8 @@ class ContractCompanyApprovedNotification extends BaseNotification
         return [
             'title' => 'اعتماد نهائي للعقد',
             'body' => 'تم اعتماد العقد ' . $this->contract->title . ' من الطرفين.',
+            'title_en' => 'Contract final approval',
+            'body_en' => 'Contract ' . $this->contract->title . ' was approved by both parties.',
             'data' => [
                 'type' => 'contract.company_approved',
                 'id' => (string) $this->contract->id,

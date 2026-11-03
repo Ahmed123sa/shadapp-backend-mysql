@@ -26,6 +26,8 @@ class PaymentReviewedNotification extends BaseNotification
                 'workspace_id' => $this->payment->workspace_id,
                 'client_id' => $this->payment->client_id,
                 'message' => 'تم اعتماد الدفعة وتفعيل مساحة العمل — يمكنك الآن التواصل مع مدير الحساب',
+                'title_en' => 'Workspace activated',
+                'message_en' => 'The payment was approved and your workspace is active. You can now contact your account manager.',
             ];
         }
         $currency = $this->payment->currency ?? 'SAR';
@@ -40,6 +42,8 @@ class PaymentReviewedNotification extends BaseNotification
             'workspace_id' => $this->payment->workspace_id,
             'client_id' => $this->payment->client_id,
             'message' => "الدفعة {$this->payment->amount} {$currency} تم {$label}",
+            'title_en' => $this->action === 'rejected' ? 'Payment rejected' : 'Payment approved',
+            'message_en' => "Payment {$this->payment->amount} {$currency} was " . ($this->action === 'rejected' ? 'rejected' : 'approved'),
         ];
         if ($this->action === 'rejected' && !empty($this->payment->rejection_reason)) {
             $data['rejection_reason'] = $this->payment->rejection_reason;
@@ -53,6 +57,8 @@ class PaymentReviewedNotification extends BaseNotification
             return [
                 'title' => 'تم تفعيل مساحة العمل',
                 'body' => "تم اعتماد الدفعة وتفعيل مساحة العمل — يمكنك الآن التواصل مع مدير الحساب",
+                'title_en' => 'Workspace activated',
+                'body_en' => 'The payment was approved and your workspace is active. You can now contact your account manager.',
                 'data' => [
                     'type' => 'payment.approved',
                     'workspace_id' => (string) $this->payment->workspace_id,
@@ -66,6 +72,8 @@ class PaymentReviewedNotification extends BaseNotification
         return [
             'title' => 'مراجعة دفعة',
             'body' => $body,
+            'title_en' => 'Payment review',
+            'body_en' => "Payment {$this->payment->amount} {$currency} " . ($this->action === 'rejected' ? 'rejected' : 'approved'),
             'data' => [
                 'type' => $type,
                 'id' => (string) $this->payment->id,

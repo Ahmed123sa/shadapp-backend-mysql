@@ -20,6 +20,8 @@ class ContractCompletedNotification extends BaseNotification
             'contract_id' => $this->contract->id,
             'title' => $this->contract->title,
             'message' => "تم اكتمال العقد: {$this->contract->title}",
+            'title_en' => $this->contract->title,
+            'message_en' => "Contract completed: {$this->contract->title}",
             'workspace_id' => $this->contract->workspace_id,
             'client_id' => $this->contract->workspace?->client_id,
         ];
@@ -30,6 +32,8 @@ class ContractCompletedNotification extends BaseNotification
         return [
             'title' => 'اكتمال عقد',
             'body' => "تم اكتمال العقد {$this->contract->title}",
+            'title_en' => 'Contract completed',
+            'body_en' => "Contract {$this->contract->title} is complete",
             'data' => [
                 'type' => 'contract.completed',
                 'id' => (string) $this->contract->id,

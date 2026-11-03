@@ -57,6 +57,8 @@ class ContractDocumentUploadedNotification extends BaseNotification
         return [
             'title' => 'مستند جديد للمراجعة',
             'body' => "{$this->clientName()} رفع {$this->docName()}، محتاج مراجعة.",
+            'title_en' => 'New document to review',
+            'body_en' => "{$this->clientName()} uploaded {$this->docName()}. It needs review.",
             'data' => [
                 'type' => 'contract',
                 'id' => (string) ($this->file->contract_id ?? $this->file->contractRequiredDocument?->contract_id ?? ''),

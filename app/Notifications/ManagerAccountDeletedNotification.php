@@ -25,12 +25,20 @@ class ManagerAccountDeletedNotification extends BaseNotification
             . $this->clientCount . ' عميل. حوّل العملاء لمدير تاني.';
     }
 
+    private function bodyEn(): string
+    {
+        return 'Account manager ' . $this->managerName . ' deleted their account and was responsible for '
+            . $this->clientCount . ' client(s). Reassign the clients to another manager.';
+    }
+
     public function toDatabase($notifiable): array
     {
         return [
             'type' => 'manager_account_deleted',
             'title' => 'حذف حساب مدير',
             'message' => $this->body(),
+            'title_en' => 'Manager account deleted',
+            'message_en' => $this->bodyEn(),
             'client_count' => $this->clientCount,
         ];
     }
@@ -40,6 +48,8 @@ class ManagerAccountDeletedNotification extends BaseNotification
         return [
             'title' => 'حذف حساب مدير',
             'body' => $this->body(),
+            'title_en' => 'Manager account deleted',
+            'body_en' => $this->bodyEn(),
             'data' => [
                 'type' => 'manager_account_deleted',
             ],

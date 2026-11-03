@@ -16,6 +16,7 @@ class ApprovalRespondedNotification extends BaseNotification
     public function toDatabase($notifiable): array
     {
         $status = $this->approval->status === 'approved' ? 'تم الموافقة' : 'طلب تعديل';
+        $statusEn = $this->approval->status === 'approved' ? 'Approved' : 'Edit requested';
         return [
             'type' => 'approval_responded',
             'approval_id' => $this->approval->id,
@@ -26,15 +27,20 @@ class ApprovalRespondedNotification extends BaseNotification
             'client_id' => $this->approval->workspace?->client_id,
             'title' => $this->approval->title,
             'message' => "حالة طلب الموافقة '{$this->approval->title}': {$status}",
+            'title_en' => $this->approval->title,
+            'message_en' => "Approval request '{$this->approval->title}': {$statusEn}",
         ];
     }
 
     public function toFcm($notifiable): array
     {
         $status = $this->approval->status === 'approved' ? 'مقبولة' : 'طلب تعديل';
+        $statusEn = $this->approval->status === 'approved' ? 'approved' : 'edit requested';
         return [
             'title' => 'رد على طلب موافقة',
             'body' => "طلب الموافقة '{$this->approval->title}' أصبح {$status}",
+            'title_en' => 'Approval request response',
+            'body_en' => "Approval request '{$this->approval->title}' is now {$statusEn}",
             'data' => [
                 'type' => 'approval',
                 'id' => (string) $this->approval->id,

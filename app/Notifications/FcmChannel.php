@@ -54,14 +54,17 @@ class FcmChannel
 
         $firebase = app(FirebaseService::class);
 
-        $notifData = [
-            'title' => mb_convert_encoding($data['title'] ?? '', 'UTF-8'),
-            'body' => mb_convert_encoding($data['body'] ?? '', 'UTF-8'),
-        ];
-
         $customData = $data['data'] ?? [];
 
         foreach ($deviceTokens as $deviceToken) {
+            // Each device gets the text in its own language; anything without
+            // an English text (or an old token) falls back to the Arabic.
+            $en = ($deviceToken->locale ?? 'ar') === 'en';
+            $notifData = [
+                'title' => mb_convert_encoding(($en ? ($data['title_en'] ?? null) : null) ?? $data['title'] ?? '', 'UTF-8'),
+                'body' => mb_convert_encoding(($en ? ($data['body_en'] ?? null) : null) ?? $data['body'] ?? '', 'UTF-8'),
+            ];
+
             try {
                 $result = $firebase->sendMessage($deviceToken->token, $notifData, $customData);
                 if ($result === 'unregistered') {

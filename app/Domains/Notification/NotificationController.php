@@ -24,6 +24,7 @@ class NotificationController extends Controller
         $request->validate([
             'token' => 'required|string',
             'device_type' => 'required|in:ios,android,web',
+            'locale' => 'nullable|in:ar,en',
         ]);
 
         $user = $request->user() ?? $request->user('client') ?? $request->user('sub_user');
@@ -38,6 +39,9 @@ class NotificationController extends Controller
                 'tokenable_id' => $user->id,
                 'tokenable_type' => get_class($user),
                 'device_type' => $request->device_type,
+                // Only changed when the app sends one; an old app version
+                // that doesn't keeps whatever the token already had (Arabic).
+                ...($request->filled('locale') ? ['locale' => $request->locale] : []),
             ]
         );
 

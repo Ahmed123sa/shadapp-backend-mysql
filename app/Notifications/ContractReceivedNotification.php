@@ -37,6 +37,8 @@ class ContractReceivedNotification extends BaseNotification
             'contract_id' => $this->contract->id,
             'title' => $this->contract->title,
             'message' => "وصلك عقد جديد بانتظار مراجعتك: {$this->contract->title}",
+            'title_en' => $this->contract->title,
+            'message_en' => "A new contract is waiting for your review: {$this->contract->title}",
             'workspace_id' => $this->contract->workspace_id,
             'client_id' => $this->contract->workspace?->client_id,
         ];
@@ -47,6 +49,8 @@ class ContractReceivedNotification extends BaseNotification
         return [
             'title' => 'تم استلام العقد',
             'body' => "عقد {$this->contract->title} بانتظار مراجعتك وموافقتك",
+            'title_en' => 'Contract received',
+            'body_en' => "Contract {$this->contract->title} is waiting for your review and approval",
             'data' => [
                 'type' => 'contract.received',
                 'id' => (string) $this->contract->id,

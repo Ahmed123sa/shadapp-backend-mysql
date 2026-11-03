@@ -31,16 +31,28 @@ class PaymentReviewedStaffNotification extends BaseNotification
             $this->action === 'rejected' ? 'تم رفض دفعة' : 'تم اعتماد دفعة',
             "تم {$verb} دفعة {$client} بقيمة {$this->payment->amount} {$currency}",
         ];
+    }    private function textEn(): array
+    {
+        $currency = $this->payment->currency ?? 'SAR';
+        $client = $this->payment->workspace?->client?->company_name ?? 'The client';
+        $verb = $this->action === 'rejected' ? 'rejected' : 'approved';
+
+        return [
+            $this->action === 'rejected' ? 'Payment rejected' : 'Payment approved',
+            "{$client}'s payment of {$this->payment->amount} {$currency} was {$verb}",
+        ];
     }
 
     public function toDatabase($notifiable): array
     {
         [$title, $message] = $this->text();
-
+        [$titleEn, $messageEn] = $this->textEn();
         return [
             'type' => 'payment_reviewed_staff',
             'title' => $title,
             'message' => $message,
+            'title_en' => $titleEn,
+            'message_en' => $messageEn,
             'payment_id' => $this->payment->id,
             'action' => $this->action,
             'amount' => $this->payment->amount,
@@ -53,10 +65,12 @@ class PaymentReviewedStaffNotification extends BaseNotification
     public function toFcm($notifiable): array
     {
         [$title, $message] = $this->text();
-
+        [$titleEn, $messageEn] = $this->textEn();
         return [
             'title' => $title,
             'body' => $message,
+            'title_en' => $titleEn,
+            'body_en' => $messageEn,
             'data' => [
                 'type' => 'payment_reviewed_staff',
                 'id' => (string) $this->payment->id,

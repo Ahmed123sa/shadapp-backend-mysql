@@ -31,6 +31,15 @@ class MeetingReminderNotification extends BaseNotification
         };
     }
 
+    private function headingEn(): string
+    {
+        return match ($this->kind) {
+            'soon' => 'The meeting starts in 5 minutes',
+            'started' => 'The meeting has started',
+            default => 'Meeting reminder',
+        };
+    }
+
     public function toDatabase($notifiable): array
     {
         return [
@@ -46,6 +55,8 @@ class MeetingReminderNotification extends BaseNotification
             'title' => $this->meeting->title,
             'scheduled_at' => $this->meeting->scheduled_at,
             'message' => "{$this->heading()}: {$this->meeting->title}",
+            'title_en' => $this->meeting->title,
+            'message_en' => "{$this->headingEn()}: {$this->meeting->title}",
             'kind' => $this->kind,
         ];
     }
@@ -54,6 +65,8 @@ class MeetingReminderNotification extends BaseNotification
     {
         return [
             'title' => $this->heading(),
+            'title_en' => $this->headingEn(),
+            'body_en' => "Meeting {$this->meeting->title} at " . \App\Support\DisplayTime::format($this->meeting->scheduled_at),
             // Plain text can't be converted per reader like the apps do, so
             // it uses the business timezone (App\Support\DisplayTime).
             'body' => "اجتماع {$this->meeting->title} في " . \App\Support\DisplayTime::format($this->meeting->scheduled_at),

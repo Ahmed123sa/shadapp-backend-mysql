@@ -18,6 +18,11 @@ class PaymentCreatedNotification extends BaseNotification
         return $this->payment->workspace?->client?->company_name ?? 'العميل';
     }
 
+    private function clientNameEn(): string
+    {
+        return $this->payment->workspace?->client?->company_name ?? 'the client';
+    }
+
     public function toDatabase($notifiable): array
     {
         $currency = $this->payment->currency ?? 'SAR';
@@ -30,6 +35,8 @@ class PaymentCreatedNotification extends BaseNotification
             'client_id' => $this->payment->client_id,
             'title' => 'دفعة جديدة',
             'message' => "أرسل العميل {$this->clientName()} دفعة بقيمة {$this->payment->amount} {$currency}",
+            'title_en' => 'New payment',
+            'message_en' => "Client {$this->clientNameEn()} sent a payment of {$this->payment->amount} {$currency}",
         ];
     }
 
@@ -39,6 +46,8 @@ class PaymentCreatedNotification extends BaseNotification
         return [
             'title' => 'دفعة جديدة',
             'body' => "أرسل العميل {$this->clientName()} دفعة بقيمة {$this->payment->amount} {$currency}",
+            'title_en' => 'New payment',
+            'body_en' => "Client {$this->clientNameEn()} sent a payment of {$this->payment->amount} {$currency}",
             'data' => [
                 'type' => 'payment_created',
                 'id' => (string) $this->payment->id,

@@ -10,6 +10,7 @@ class MobileNotificationToken extends Model
     protected $fillable = [
         'token',
         'device_type',
+        'locale',
         'tokenable_id',
         'tokenable_type',
     ];

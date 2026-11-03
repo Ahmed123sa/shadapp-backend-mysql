@@ -20,6 +20,8 @@ class ContractEditRequestedNotification extends BaseNotification
             'contract_id' => $this->contract->id,
             'title' => $this->contract->title,
             'message' => "طلب تعديل على العقد: {$this->contract->title}",
+            'title_en' => $this->contract->title,
+            'message_en' => "Edit requested on contract: {$this->contract->title}",
             'workspace_id' => $this->contract->workspace_id,
             'client_id' => $this->contract->workspace?->client_id,
         ];
@@ -30,6 +32,8 @@ class ContractEditRequestedNotification extends BaseNotification
         return [
             'title' => 'طلب تعديل عقد',
             'body' => "العميل طلب تعديل العقد: {$this->contract->title}",
+            'title_en' => 'Contract edit request',
+            'body_en' => "The client requested edits to the contract: {$this->contract->title}",
             'data' => [
                 'type' => 'contract',
                 'id' => (string) $this->contract->id,

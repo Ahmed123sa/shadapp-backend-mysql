@@ -20,6 +20,8 @@ class ContractClientApprovedNotification extends BaseNotification
             'contract_id' => $this->contract->id,
             'title' => 'اعتماد عقد من العميل',
             'message' => 'قام العميل ' . ($this->contract->workspace->client->company_name ?? '') . ' باعتماد العقد: ' . $this->contract->title,
+            'title_en' => 'Contract approved by client',
+            'message_en' => 'Client ' . ($this->contract->workspace->client->company_name ?? '') . ' approved the contract: ' . $this->contract->title,
             'workspace_id' => $this->contract->workspace_id,
             'client_id' => $this->contract->workspace?->client_id,
         ];
@@ -30,6 +32,8 @@ class ContractClientApprovedNotification extends BaseNotification
         return [
             'title' => 'اعتماد عقد من العميل',
             'body' => 'قام العميل ' . ($this->contract->workspace->client->company_name ?? '') . ' باعتماد العقد: ' . $this->contract->title,
+            'title_en' => 'Contract approved by client',
+            'body_en' => 'Client ' . ($this->contract->workspace->client->company_name ?? '') . ' approved the contract: ' . $this->contract->title,
             'data' => [
                 'type' => 'contract',
                 'id' => (string) $this->contract->id,

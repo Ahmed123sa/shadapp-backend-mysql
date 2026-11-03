@@ -28,6 +28,8 @@ class SubUserBirthdayGreetingNotification extends BaseNotification
         return [
             'title' => 'عيد ميلاد سعيد!',
             'body' => "كل سنة وأنت طيب يا {$this->subUser->name}!",
+            'title_en' => 'Happy birthday!',
+            'body_en' => "Happy birthday, {$this->subUser->name}!",
             'data' => [
                 'type' => 'birthday_greeting',
                 'workspace_id' => (string) ($this->subUser->client?->workspace?->id ?? ''),

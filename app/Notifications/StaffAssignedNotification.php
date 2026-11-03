@@ -22,6 +22,11 @@ class StaffAssignedNotification extends BaseNotification
         $client = $this->workspace->client;
 
         return (string) ($client?->company_name ?: $client?->contact_person ?: 'عميل');
+    }    private function clientNameEn(): string
+    {
+        $client = $this->workspace->client;
+
+        return (string) ($client?->company_name ?: $client?->contact_person ?: 'a client');
     }
 
     public function toDatabase($notifiable): array
@@ -32,6 +37,8 @@ class StaffAssignedNotification extends BaseNotification
             'client_id' => $this->workspace->client_id,
             'title' => 'تم إضافتك لعميل جديد',
             'message' => "تم إضافتك لفريق العميل {$this->clientName()}",
+            'title_en' => 'You were added to a new client',
+            'message_en' => "You were added to the team of {$this->clientNameEn()}",
         ];
     }
 
@@ -40,6 +47,8 @@ class StaffAssignedNotification extends BaseNotification
         return [
             'title' => 'تم إضافتك لعميل جديد',
             'body' => "تم إضافتك لفريق العميل {$this->clientName()}",
+            'title_en' => 'You were added to a new client',
+            'body_en' => "You were added to the team of {$this->clientNameEn()}",
             'data' => [
                 'type' => 'staff_assigned',
                 'workspace_id' => (string) $this->workspace->id,

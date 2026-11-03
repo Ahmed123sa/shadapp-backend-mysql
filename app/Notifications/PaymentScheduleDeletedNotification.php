@@ -11,8 +11,12 @@ class PaymentScheduleDeletedNotification extends BaseNotification
     public function toDatabase(object $notifiable): array
     {
         $body = 'تم مسح القسط ' . ($this->payment->installment_label ?? '') . ' — ' . number_format((float) $this->payment->amount, 2) . ' ' . ($this->payment->currency ?? 'SAR');
+        $bodyEn = 'Installment ' . ($this->payment->installment_label ?? '') . ' was removed — ' . number_format((float) $this->payment->amount, 2) . ' ' . ($this->payment->currency ?? 'SAR');
         return [
             'type' => 'payment_schedule_deleted',
+            'title_en' => 'Installment removed',
+            'body_en' => $bodyEn,
+            'message_en' => $bodyEn,
             'title' => 'تم مسح قسط',
             'body' => $body,
             'message' => $body,
@@ -26,6 +30,8 @@ class PaymentScheduleDeletedNotification extends BaseNotification
     {
         return [
             'title' => 'تم مسح قسط',
+            'title_en' => 'Installment removed',
+            'body_en' => 'Installment ' . ($this->payment->installment_label ?? '') . ' was removed — ' . number_format((float) $this->payment->amount, 2) . ' ' . ($this->payment->currency ?? 'SAR'),
             'body' => 'تم مسح القسط ' . ($this->payment->installment_label ?? '') . ' — ' . number_format((float) $this->payment->amount, 2) . ' ' . ($this->payment->currency ?? 'SAR'),
             'data' => [
                 'type' => 'payment_schedule_deleted',

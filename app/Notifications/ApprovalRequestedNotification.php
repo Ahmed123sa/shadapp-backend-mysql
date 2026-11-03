@@ -25,6 +25,8 @@ class ApprovalRequestedNotification extends BaseNotification
             'client_id' => $this->approval->workspace?->client_id,
             'title' => $this->approval->title,
             'message' => "طلب موافقة: {$this->approval->title}",
+            'title_en' => $this->approval->title,
+            'message_en' => "Approval request: {$this->approval->title}",
         ];
     }
 
@@ -33,6 +35,8 @@ class ApprovalRequestedNotification extends BaseNotification
         return [
             'title' => 'طلب موافقة',
             'body' => "طلب موافقة جديد: {$this->approval->title}",
+            'title_en' => 'Approval request',
+            'body_en' => "New approval request: {$this->approval->title}",
             'data' => [
                 'type' => 'approval',
                 'id' => (string) $this->approval->id,

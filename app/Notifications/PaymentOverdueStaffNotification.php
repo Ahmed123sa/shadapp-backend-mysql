@@ -29,14 +29,27 @@ class PaymentOverdueStaffNotification extends BaseNotification
         ];
     }
 
+    private function textEn(): array
+    {
+        $currency = $this->payment->currency ?? 'SAR';
+        $client = $this->payment->workspace?->client?->company_name ?? 'The client';
+
+        return [
+            'Overdue payment',
+            "{$client}'s payment of {$this->payment->amount} {$currency} is past its due date",
+        ];
+    }
+
     public function toDatabase($notifiable): array
     {
         [$title, $message] = $this->text();
-
+        [$titleEn, $messageEn] = $this->textEn();
         return [
             'type' => 'payment_overdue_staff',
             'title' => $title,
             'message' => $message,
+            'title_en' => $titleEn,
+            'message_en' => $messageEn,
             'payment_id' => $this->payment->id,
             'amount' => $this->payment->amount,
             'currency' => $this->payment->currency ?? 'SAR',
@@ -48,10 +61,12 @@ class PaymentOverdueStaffNotification extends BaseNotification
     public function toFcm($notifiable): array
     {
         [$title, $message] = $this->text();
-
+        [$titleEn, $messageEn] = $this->textEn();
         return [
             'title' => $title,
             'body' => $message,
+            'title_en' => $titleEn,
+            'body_en' => $messageEn,
             'data' => [
                 'type' => 'payment_overdue_staff',
                 'id' => (string) $this->payment->id,

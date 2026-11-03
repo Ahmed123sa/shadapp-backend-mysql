@@ -47,6 +47,8 @@ class FileRejectedNotification extends BaseNotification
         return [
             'title' => 'تم رفض ملف',
             'body' => "تم رفض {$this->label()}. ارفع ملف بديل.",
+            'title_en' => 'A file was rejected',
+            'body_en' => "{$this->label()} was rejected. Please upload a replacement.",
             'data' => [
                 'type' => 'file_rejected',
                 'id' => (string) $this->file->id,

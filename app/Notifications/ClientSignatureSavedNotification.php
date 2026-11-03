@@ -22,6 +22,8 @@ class ClientSignatureSavedNotification extends BaseNotification
             'workspace_id' => $workspace?->id,
             'title' => 'اعتماد التوقيع الإلكتروني',
             'message' => 'قام العميل ' . ($this->client->company_name ?? $this->client->contact_person ?? '') . ' باعتماد وتحديث توقيعه الإلكتروني.',
+            'title_en' => 'E-signature updated',
+            'message_en' => 'Client ' . ($this->client->company_name ?? $this->client->contact_person ?? '') . ' confirmed and updated their e-signature.',
         ];
     }
 
@@ -31,6 +33,8 @@ class ClientSignatureSavedNotification extends BaseNotification
         return [
             'title' => 'اعتماد التوقيع الإلكتروني',
             'body' => 'قام العميل ' . ($this->client->company_name ?? $this->client->contact_person ?? '') . ' باعتماد وتحديث توقيعه الإلكتروني.',
+            'title_en' => 'E-signature updated',
+            'body_en' => 'Client ' . ($this->client->company_name ?? $this->client->contact_person ?? '') . ' confirmed and updated their e-signature.',
             'data' => [
                 'type' => 'client_signature_saved',
                 'client_id' => (string) $this->client->id,
