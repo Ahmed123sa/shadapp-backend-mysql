@@ -17,6 +17,7 @@ class UpdateContractRequest extends FormRequest
         return [
             'title' => 'string|max:255',
             'value' => 'nullable|numeric|min:0',
+            'ads_percentage' => 'nullable|numeric|min:0.01|max:100',
             'currency' => 'nullable|string|max:10',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',

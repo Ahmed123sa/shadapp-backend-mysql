@@ -12,12 +12,12 @@ class Contract extends Model
     use HasFactory;
 
     protected $fillable = [
-        'workspace_id', 'title', 'contract_type', 'status', 'edit_reason', 'value', 'currency', 'tax_percentage', 'start_date', 'end_date',
+        'workspace_id', 'title', 'contract_type', 'status', 'edit_reason', 'value', 'currency', 'tax_percentage', 'ads_percentage', 'start_date', 'end_date',
         'pdf_url', 'client_signed_at', 'client_signature_data', 'company_signed_at', 'company_signature_data', 'company_signature_type',
         'archived_at', 'created_by',
     ];
 
-    protected $appends = ['tax_amount', 'total_with_tax'];
+    protected $appends = ['tax_amount', 'total_with_tax', 'ads_amount', 'ads_budget'];
 
     protected function casts(): array
     {
@@ -25,6 +25,7 @@ class Contract extends Model
             'value' => 'decimal:2',
             'currency' => 'string',
             'tax_percentage' => 'float',
+            'ads_percentage' => 'float',
             'client_signed_at' => 'datetime',
             'company_signed_at' => 'datetime',
             'archived_at' => 'datetime',
@@ -70,6 +71,25 @@ class Contract extends Model
     public function getTotalWithTaxAttribute(): float
     {
         return round((float) $this->value + $this->tax_amount, 2);
+    }
+
+    /**
+     * Ads contracts: the agency's management fee is a share of the contract
+     * value, not on top of it. These two only split the value for display, so
+     * the value, the tax and the total never change. Null for a normal contract.
+     */
+    public function getAdsAmountAttribute(): ?float
+    {
+        $pct = $this->attributes['ads_percentage'] ?? null;
+
+        return $pct === null ? null : round((float) $this->value * (float) $pct / 100, 2);
+    }
+
+    public function getAdsBudgetAttribute(): ?float
+    {
+        $amount = $this->ads_amount;
+
+        return $amount === null ? null : round((float) $this->value - $amount, 2);
     }
 
     public function workspace(): BelongsTo

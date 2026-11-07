@@ -5,6 +5,10 @@
 <p>السلام عليكم،</p>
 <p>تم إرسال عقد "{{ $contract->title }}" للمراجعة.</p>
 <p>قيمة العقد: {{ number_format($contract->value, 2) }} ر.س</p>
+@if($contract->ads_percentage !== null)
+<p>نسبة إدارة الإعلانات ({{ rtrim(rtrim(number_format($contract->ads_percentage, 2, '.', ''), '0'), '.') }}%): {{ number_format($contract->ads_amount, 2) }} ر.س</p>
+<p>ميزانية الإعلانات: {{ number_format($contract->ads_budget, 2) }} ر.س</p>
+@endif
 @if($contract->requiredDocuments->count() > 0)
 <h3 style="margin-top:20px;">المستندات المطلوبة</h3>
 <ul>
@@ -21,6 +25,10 @@
 <p>Hello,</p>
 <p>The contract "{{ $contract->title }}" was sent for review.</p>
 <p>Contract value: {{ number_format($contract->value, 2) }} SAR</p>
+@if($contract->ads_percentage !== null)
+<p>Ads management fee ({{ rtrim(rtrim(number_format($contract->ads_percentage, 2, '.', ''), '0'), '.') }}%): {{ number_format($contract->ads_amount, 2) }} SAR</p>
+<p>Ad budget: {{ number_format($contract->ads_budget, 2) }} SAR</p>
+@endif
 @if($contract->requiredDocuments->count() > 0)
 <h3 style="margin-top:20px;">Required documents</h3>
 <ul>

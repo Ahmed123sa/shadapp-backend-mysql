@@ -29,6 +29,10 @@
         <p><strong>مدير الحساب:</strong> {{ $manager->name ?? '' }}</p>
         @if($contract->value > 0)
         <p><strong>قيمة العقد:</strong> {{ number_format($contract->value, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
+        @if($contract->ads_percentage !== null)
+        <p><strong>نسبة إدارة الإعلانات ({{ rtrim(rtrim(number_format($contract->ads_percentage, 2, '.', ''), '0'), '.') }}%):</strong> {{ number_format($contract->ads_amount, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
+        <p><strong>ميزانية الإعلانات:</strong> {{ number_format($contract->ads_budget, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
+        @endif
         @if($taxPercentage > 0)
         <p><strong>الضريبة المضافة ({{ $taxPercentage }}%):</strong> {{ number_format($taxAmount, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
         <p><strong>الإجمالي شامل الضريبة:</strong> {{ number_format($contract->value + $taxAmount, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>

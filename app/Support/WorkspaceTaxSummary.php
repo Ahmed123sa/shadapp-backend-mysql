@@ -43,6 +43,9 @@ class WorkspaceTaxSummary
                 'value' => (float) $c->value,
                 'tax_percentage' => $c->tax_percentage,
                 'tax_amount' => $c->tax_amount,
+                'ads_percentage' => $c->ads_percentage,
+                'ads_amount' => $c->ads_amount,
+                'ads_budget' => $c->ads_budget,
                 'total' => $c->total_with_tax,
             ])->values()->all(),
         ];

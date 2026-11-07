@@ -18,6 +18,7 @@ class StoreContractRequest extends FormRequest
             'title' => 'required|string|max:255',
             'contract_type' => 'nullable|string|in:main,additional',
             'value' => 'nullable|numeric|min:0',
+            'ads_percentage' => 'nullable|numeric|min:0.01|max:100',
             'currency' => 'nullable|string|max:10',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',

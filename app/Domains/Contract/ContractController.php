@@ -191,6 +191,7 @@ class ContractController extends Controller
                 ? 'additional'
                 : ($request->contract_type ?? 'main'),
             'value' => $request->value ?? 0,
+            'ads_percentage' => $request->ads_percentage,
             'currency' => $request->currency ?? 'SAR',
             'start_date' => $request->start_date,
             'end_date' => $request->end_date,
@@ -271,7 +272,7 @@ class ContractController extends Controller
         }
 
         $contract->update(array_merge(
-            $request->only(['title', 'value', 'currency', 'start_date', 'end_date', 'contract_type']),
+            $request->only(['title', 'value', 'ads_percentage', 'currency', 'start_date', 'end_date', 'contract_type']),
             ['pdf_url' => null],
         ));
 
