@@ -15,8 +15,8 @@ use Tests\TestCase;
 
 /**
  * Ads contracts: the agency's management fee is a share of the contract value
- * (inside it, not on top). It only splits the value for display, so the value,
- * the tax and the total must come out exactly as they do for a normal contract.
+ * (inside it, not on top). The value never changes; the tax is charged on the
+ * fee only, since the ad budget inside the value is not the agency's income.
  */
 class AdsContractTest extends TestCase
 {
@@ -138,28 +138,74 @@ class AdsContractTest extends TestCase
         }
     }
 
-    public function test_the_tax_and_the_total_are_the_same_with_or_without_the_percentage(): void
+    public function test_a_normal_contract_is_taxed_on_its_whole_value(): void
     {
         $plain = $this->contract('company_approved');
-        $ads = $this->contract('company_approved', ['ads_percentage' => 10]);
 
         $this->assertEquals(1400, $plain->tax_amount);
-        $this->assertEquals(1400, $ads->tax_amount);
         $this->assertEquals(11400, $plain->total_with_tax);
-        $this->assertEquals(11400, $ads->total_with_tax);
-        $this->assertEquals($plain->value, $ads->value);
     }
 
-    public function test_the_workspace_summary_keeps_its_totals_and_adds_the_split(): void
+    public function test_an_ads_contract_is_taxed_on_the_agency_fee_only(): void
+    {
+        $ads = $this->contract('company_approved', ['value' => 50000, 'ads_percentage' => 20]);
+
+        // Fee 10,000; tax 14% of the fee is 1,400, not 14% of 50,000.
+        $this->assertEquals(10000, $ads->ads_amount);
+        $this->assertEquals(1400, $ads->tax_amount);
+        $this->assertEquals(51400, $ads->total_with_tax);
+        $this->assertEquals(50000, $ads->value);
+    }
+
+    public function test_the_ads_tax_uses_the_percentage_set_on_the_client(): void
+    {
+        $this->client->update(['tax_percentage' => 20]);
+
+        $ads = $this->contract('company_approved', ['value' => 50000, 'ads_percentage' => 20]);
+
+        $this->assertEquals(2000, $ads->tax_amount);
+        $this->assertEquals(52000, $ads->total_with_tax);
+    }
+
+    public function test_an_individual_client_pays_no_tax_on_an_ads_contract(): void
+    {
+        $this->client->update(['client_type' => 'individual', 'tax_percentage' => null]);
+
+        $ads = $this->contract('company_approved', ['value' => 50000, 'ads_percentage' => 20]);
+
+        $this->assertEquals(0, $ads->tax_amount);
+        $this->assertEquals(50000, $ads->total_with_tax);
+    }
+
+    public function test_a_hundred_percent_fee_taxes_the_whole_value(): void
+    {
+        $ads = $this->contract('company_approved', ['ads_percentage' => 100]);
+
+        $this->assertEquals(1400, $ads->tax_amount);
+        $this->assertEquals(0, $ads->ads_budget);
+    }
+
+    public function test_turning_the_ads_switch_off_taxes_the_whole_value_again(): void
+    {
+        $c = $this->contract('draft', ['ads_percentage' => 10]);
+        $this->assertEquals(140, $c->tax_amount);
+
+        $this->putJson("/api/contracts/{$c->id}", ['ads_percentage' => null])->assertOk();
+
+        $this->assertEquals(1400, $c->fresh()->tax_amount);
+    }
+
+    public function test_the_workspace_summary_taxes_each_contract_on_its_own_base(): void
     {
         $this->contract('company_approved', ['ads_percentage' => 10]);
         $this->contract('company_approved', ['value' => 5000]);
 
         $sum = WorkspaceTaxSummary::for($this->ws->fresh());
 
+        // 10,000 ads (fee 1,000 -> tax 140) + 5,000 plain (tax 700).
         $this->assertEquals(15000, $sum['contracts_total']);
-        $this->assertEquals(2100, $sum['tax_amount']);
-        $this->assertEquals(17100, $sum['grand_total']);
+        $this->assertEquals(840, $sum['tax_amount']);
+        $this->assertEquals(15840, $sum['grand_total']);
         $this->assertEquals(1000, $sum['contracts'][0]['ads_amount']);
         $this->assertEquals(9000, $sum['contracts'][0]['ads_budget']);
         $this->assertNull($sum['contracts'][1]['ads_percentage']);
@@ -172,7 +218,7 @@ class AdsContractTest extends TestCase
 
         $res = $this->getJson("/api/workspaces/{$this->ws->id}/payments")->assertOk();
 
-        $this->assertEquals(11400, $res->json('tax_summary.grand_total'));
+        $this->assertEquals(10140, $res->json('tax_summary.grand_total'));
         $this->assertEquals(1000, $res->json('tax_summary.contracts.0.ads_amount'));
         $this->assertEquals(9000, $res->json('tax_summary.contracts.0.ads_budget'));
     }
@@ -188,8 +234,13 @@ class AdsContractTest extends TestCase
         $this->assertStringContainsString('ميزانية الإعلانات', $withAds);
         $this->assertStringContainsString('9,000.00', $withAds);
 
+        // The tax line says what it was charged on: 14% of the 1,000 fee.
+        $this->assertStringContainsString('الضريبة المضافة (14% على نسبة إدارة الإعلانات)', $withAds);
+        $this->assertStringContainsString('140.00', $withAds);
+
         $without = $this->renderPdfView($plain);
         $this->assertStringNotContainsString('إدارة الإعلانات', $without);
+        $this->assertStringContainsString('الضريبة المضافة (14%)', $without);
         $this->assertStringNotContainsString('ميزانية الإعلانات', $without);
     }
 

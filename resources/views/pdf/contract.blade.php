@@ -34,7 +34,7 @@
         <p><strong>ميزانية الإعلانات:</strong> {{ number_format($contract->ads_budget, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
         @endif
         @if($taxPercentage > 0)
-        <p><strong>الضريبة المضافة ({{ $taxPercentage }}%):</strong> {{ number_format($taxAmount, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
+        <p><strong>الضريبة المضافة ({{ $taxPercentage }}%{{ $contract->ads_percentage !== null ? ' على نسبة إدارة الإعلانات' : '' }}):</strong> {{ number_format($taxAmount, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
         <p><strong>الإجمالي شامل الضريبة:</strong> {{ number_format($contract->value + $taxAmount, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
         @endif
         @endif

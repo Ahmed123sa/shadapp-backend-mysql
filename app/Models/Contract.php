@@ -63,9 +63,21 @@ class Contract extends Model
         return $this->effectiveTaxPercentage();
     }
 
+    /**
+     * What the tax is charged on. A normal contract: the whole value. An ads
+     * contract: only the agency's own share (the management fee) — the ad
+     * budget inside the value is not the agency's income, so it carries no tax.
+     */
+    public function taxableAmount(): float
+    {
+        return ($this->attributes['ads_percentage'] ?? null) === null
+            ? (float) $this->value
+            : (float) $this->ads_amount;
+    }
+
     public function getTaxAmountAttribute(): float
     {
-        return round((float) $this->value * $this->effectiveTaxPercentage() / 100, 2);
+        return round($this->taxableAmount() * $this->effectiveTaxPercentage() / 100, 2);
     }
 
     public function getTotalWithTaxAttribute(): float
@@ -75,8 +87,9 @@ class Contract extends Model
 
     /**
      * Ads contracts: the agency's management fee is a share of the contract
-     * value, not on top of it. These two only split the value for display, so
-     * the value, the tax and the total never change. Null for a normal contract.
+     * value, not on top of it. These two split the value; the value itself
+     * never changes, and the tax is charged on the fee only (taxableAmount).
+     * Null for a normal contract.
      */
     public function getAdsAmountAttribute(): ?float
     {
