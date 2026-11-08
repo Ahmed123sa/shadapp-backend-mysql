@@ -23,7 +23,7 @@ class ChatController extends Controller
     public function index(Workspace $workspace): JsonResponse
     {
         $messages = $workspace->chatMessages()
-            ->with('sender', 'approval.certificate', 'replyTo.sender')
+            ->with('sender', 'approval.certificate', 'approval.files', 'replyTo.sender')
             ->latest()
             ->take(100)
             ->get()
@@ -83,9 +83,12 @@ class ChatController extends Controller
             'reply_to_id' => $request->reply_to_id,
         ]);
 
+        $approval = null;
         if ($request->boolean('requires_action')) {
             $approval = $workspace->approvals()->create([
-                'title' => 'موافقة مطلوبة: ' . Str::limit($request->message ?? 'رسالة', 50),
+                // What is being asked, or the file's name when the message is
+                // only a file. No fixed-language prefix: the title shows as typed.
+                'title' => Str::limit(trim((string) $request->message) !== '' ? trim($request->message) : ($fileName ?? 'طلب موافقة'), 50),
                 'description' => $request->message,
                 'approvable_type' => 'chat_message',
                 'approvable_id' => $message->id,
@@ -96,9 +99,12 @@ class ChatController extends Controller
             $message->update(['approval_id' => $approval->id]);
         }
 
-        // If a file was uploaded, also save as FileEntry
+        // If a file was uploaded, also save as FileEntry. When the message asks
+        // for approval the file belongs to that approval, so it is shown with
+        // it (and tagged as an approval attachment in Files).
         if ($request->hasFile('file')) {
             $workspace->files()->create([
+                'approval_id' => $approval?->id,
                 'uploaded_by_type' => $senderType,
                 'uploaded_by_id' => $sender->id,
                 'file_url' => $fileUrl,
@@ -132,6 +138,11 @@ class ChatController extends Controller
         if ($recipient instanceof \App\Models\User && !$recipient->isActive()) {
             $recipient = null;
         }
+        if ($approval && $senderType === \App\Models\User::class) {
+            // An approval request is told as one, not as "new message from X".
+            \App\Support\ApprovalNotifier::requested($approval, $sender);
+            $recipient = null;
+        }
         if ($recipient) {
             // plans/notifications-badges-toasts-plan.md ن16 (§3 س1) — don't
             // push again if the recipient already has an unread chat
@@ -158,7 +169,7 @@ class ChatController extends Controller
             \App\Support\StaffNotifier::chatMessage($message);
         }
 
-        return response()->json(['message' => $message->load('sender', 'replyTo.sender')], 201);
+        return response()->json(['message' => $message->load('sender', 'replyTo.sender', 'approval.files')], 201);
     }
 
     public function toggleRequireAction(Request $request, ChatMessage $chatMessage): JsonResponse
@@ -184,8 +195,14 @@ class ChatController extends Controller
         // When enabling requires_action, create an Approval record automatically
         if ($newValue && !$chatMessage->approval_id) {
             $workspace = $chatMessage->workspace;
+            // A message that is only a file: the file stored behind it.
+            $rawUrl = $chatMessage->type === 'file' ? $chatMessage->getRawOriginal('file_url') : null;
+            $entry = $rawUrl
+                ? $workspace->files()->where('file_url', $rawUrl)->whereNull('approval_id')->first()
+                : null;
+
             $approval = $workspace->approvals()->create([
-                'title' => 'موافقة مطلوبة: ' . Str::limit($chatMessage->message ?? 'رسالة', 50),
+                'title' => Str::limit(trim((string) $chatMessage->message) !== '' ? trim($chatMessage->message) : ($entry?->name ?? 'طلب موافقة'), 50),
                 'description' => $chatMessage->message,
                 'approvable_type' => 'chat_message',
                 'approvable_id' => $chatMessage->id,
@@ -195,9 +212,12 @@ class ChatController extends Controller
             ]);
 
             $chatMessage->update(['approval_id' => $approval->id]);
+            $entry?->update(['approval_id' => $approval->id]);
+
+            \App\Support\ApprovalNotifier::requested($approval, $user);
         }
 
-        return response()->json(['message' => $chatMessage->fresh()->load('sender', 'approval')]);
+        return response()->json(['message' => $chatMessage->fresh()->load('sender', 'approval.files')]);
     }
 
     public function respond(Request $request, ChatMessage $chatMessage): JsonResponse

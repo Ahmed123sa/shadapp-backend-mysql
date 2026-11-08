@@ -83,16 +83,19 @@ class ApprovalController extends Controller
                     'name' => $file->getClientOriginalName(),
                     'type' => $file->getMimeType(),
                     'size' => $file->getSize(),
-                    'status' => 'pending',
+                    // Staff attached it to their own request: nothing to review,
+                    // and the client must not see it as their own pending upload.
+                    'status' => 'approved',
                 ]);
             }
         }
 
-        // Create a chat message for this approval
+        // Create a chat message for this approval. The card already says it
+        // is an approval request, so the text is just what is being asked.
         $msg = $workspace->chatMessages()->create([
             'sender_type' => get_class($request->user()),
             'sender_id' => $request->user()->id,
-            'message' => '📋 طلب موافقة: ' . $request->title . ($request->description ? "\n" . $request->description : ''),
+            'message' => $request->title . ($request->description ? "\n" . $request->description : ''),
             'type' => 'text',
             'requires_action' => true,
             'approval_id' => $approval->id,
@@ -125,21 +128,8 @@ class ApprovalController extends Controller
         // to respond to the request. Now: the client, plus the workspace
         // manager only when someone else (a super admin) raised the request
         // in their workspace. Super admins no longer get this notification.
-        $notifyUsers = collect();
-        if ($workspace->client) {
-            $notifyUsers->push($workspace->client);
-        }
-        $manager = $workspace->manager;
-        if ($manager && $manager->id !== $request->user()->id && $manager->isActive()) {
-            $notifyUsers->push($manager);
-        }
-        foreach ($notifyUsers as $user) {
-            try {
-                $user->notify(new ApprovalRequestedNotification($approval));
-            } catch (\Exception $e) {
-                Log::warning('Failed to send approval requested notification: ' . $e->getMessage());
-            }
-        }
+        // The chat path shares the same rule (App\Support\ApprovalNotifier).
+        \App\Support\ApprovalNotifier::requested($approval, $request->user());
 
         return response()->json(['approval' => $approval->load('requester', 'files', 'chatMessage')], 201);
     }

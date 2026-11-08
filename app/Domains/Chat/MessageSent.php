@@ -34,7 +34,7 @@ class MessageSent implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'message' => $this->message->load('sender'),
+            'message' => $this->message->load('sender', 'approval.files'),
         ];
     }
 }
