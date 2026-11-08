@@ -16,7 +16,7 @@ class Meeting extends Model
     protected $appends = ['host_user_id'];
 
     // Internal bookkeeping for meetings:send-alerts, not part of the API shape.
-    protected $hidden = ['soon_notified_at', 'start_notified_at'];
+    protected $hidden = ['soon_notified_at', 'start_notified_at', 'sa_reminded_at'];
 
     protected static function booted(): void
     {
@@ -26,6 +26,7 @@ class Meeting extends Model
             if ($meeting->isDirty('scheduled_at')) {
                 $meeting->soon_notified_at = null;
                 $meeting->start_notified_at = null;
+                $meeting->sa_reminded_at = null;
             }
         });
     }

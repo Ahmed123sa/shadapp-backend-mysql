@@ -50,6 +50,17 @@ class SendMeetingAlerts extends Command
             $sent += MeetingNotifier::everyone($meeting, 'soon');
         }
 
+        // The super admin's own reminder, 15 minutes ahead, once per meeting.
+        $ahead = Meeting::where('status', 'scheduled')
+            ->whereNull('sa_reminded_at')
+            ->where('scheduled_at', '>', $now)
+            ->where('scheduled_at', '<=', $now->copy()->addMinutes(15))
+            ->get();
+        foreach ($ahead as $meeting) {
+            Meeting::whereKey($meeting->id)->update(['sa_reminded_at' => $now]);
+            $sent += \App\Support\SuperAdminMeetingNotifier::soon($meeting);
+        }
+
         $this->info("Sent {$sent} meeting alert(s).");
     }
 }

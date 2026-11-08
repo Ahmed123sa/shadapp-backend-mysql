@@ -9,6 +9,7 @@ use App\Models\AuditLog;
 use App\Events\MeetingCreated;
 use App\Http\Requests\StoreMeetingRequest;
 use App\Services\ZoomService;
+use App\Support\SuperAdminMeetingNotifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -111,6 +112,10 @@ class MeetingController extends Controller
 
         $meeting->update($request->only(['title', 'scheduled_at', 'duration_minutes', 'notes', 'status']));
 
+        if ($meeting->wasChanged('status') && $meeting->status === 'cancelled') {
+            SuperAdminMeetingNotifier::cancelled($meeting, $request->user());
+        }
+
         if ($request->has('scheduled_at')) {
             Cache::forget($meeting->hostCacheKey());
         }
@@ -183,7 +188,7 @@ class MeetingController extends Controller
         return response()->json(['meeting' => $meeting->fresh()]);
     }
 
-    public function cancel(Meeting $meeting): JsonResponse
+    public function cancel(Request $request, Meeting $meeting): JsonResponse
     {
         $this->authorize('update', $meeting);
 
@@ -202,6 +207,8 @@ class MeetingController extends Controller
         }
 
         $meeting->update(['status' => 'cancelled']);
+
+        SuperAdminMeetingNotifier::cancelled($meeting, $request->user());
 
         return response()->json(['meeting' => $meeting->fresh()]);
     }

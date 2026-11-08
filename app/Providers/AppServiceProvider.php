@@ -69,6 +69,7 @@ class AppServiceProvider extends ServiceProvider
         // of auto-discovery. Now that discovery is disabled (bootstrap/app.php),
         // it needs this explicit line or meeting chat messages stop being created.
         Event::listen(MeetingCreated::class, [CreateMeetingChatMessage::class, 'handleMeetingCreated']);
+        Event::listen(MeetingCreated::class, [\App\Listeners\NotifySuperAdminOfMeeting::class, 'handleMeetingCreated']);
         Event::listen(ApprovalResponded::class, [SendApprovalEmailNotification::class, 'handleApprovalResponded']);
         Event::listen(ClientCreated::class, [SendClientWelcomeEmail::class, 'handleClientCreated']);
 
