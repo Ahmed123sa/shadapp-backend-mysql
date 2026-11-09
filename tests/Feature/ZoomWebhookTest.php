@@ -62,21 +62,48 @@ class ZoomWebhookTest extends TestCase
         ];
     }
 
+    /**
+     * The challenge exactly as Zoom documents it: the token sits under
+     * "payload", and the request is signed like any other event. The old test
+     * posted a top-level "endpoint_url_validation" key Zoom never sends, so
+     * the real "Validate" button always failed while this test passed.
+     */
     public function test_endpoint_url_validation_returns_encrypted_token(): void
     {
-        // Zoom sends the validation challenge unsigned, so this path runs
-        // before signature verification and needs no headers.
-        $response = $this->postJson('/api/webhooks/zoom', [
+        $payload = [
+            'payload' => ['plainToken' => 'qgg8vlvZRS6UYooatFL8Aw'],
+            'event_ts' => 1654503849680,
             'event' => 'endpoint.url_validation',
-            'endpoint_url_validation' => ['plainToken' => 'abc'],
-        ]);
+        ];
+
+        $response = $this->postJson('/api/webhooks/zoom', $payload, $this->zoomHeaders($payload));
 
         $response->assertOk();
-        $this->assertEquals('abc', $response->json('plainToken'));
-        $this->assertEquals(
-            hash_hmac('sha256', 'abc', self::SECRET),
+        $this->assertSame('qgg8vlvZRS6UYooatFL8Aw', $response->json('plainToken'));
+        $this->assertSame(
+            hash_hmac('sha256', 'qgg8vlvZRS6UYooatFL8Aw', self::SECRET),
             $response->json('encryptedToken')
         );
+        // Validation touches no meeting.
+        $this->assertSame('scheduled', $this->meeting->fresh()->status);
+    }
+
+    public function test_an_unsigned_validation_request_gets_no_token(): void
+    {
+        // Answering unsigned callers would let anyone get the HMAC of any
+        // string under the secret that signs real events.
+        $this->postJson('/api/webhooks/zoom', [
+            'payload' => ['plainToken' => 'v0:1:{"event":"meeting.ended"}'],
+            'event' => 'endpoint.url_validation',
+        ])->assertStatus(401)->assertJsonMissing(['encryptedToken']);
+    }
+
+    public function test_the_old_unsigned_validation_shape_is_not_answered(): void
+    {
+        $this->postJson('/api/webhooks/zoom', [
+            'event' => 'endpoint.url_validation',
+            'endpoint_url_validation' => ['plainToken' => 'abc'],
+        ])->assertStatus(401);
     }
 
     public function test_recording_completed_saves_download_url_from_recording_files(): void

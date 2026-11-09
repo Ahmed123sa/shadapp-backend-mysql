@@ -15,17 +15,6 @@ class ZoomWebhookController extends Controller
     {
         $payload = $request->all();
 
-        // Zoom endpoint URL validation (first-time webhook setup)
-        if (isset($payload['endpoint_url_validation'])) {
-            $plainToken = $payload['endpoint_url_validation']['plainToken'] ?? '';
-            $secretToken = config('services.zoom.webhook_secret');
-
-            return response()->json([
-                'plainToken' => $plainToken,
-                'encryptedToken' => hash_hmac('sha256', $plainToken, $secretToken),
-            ]);
-        }
-
         // Verify webhook signature. Zoom signs "v0:{timestamp}:{body}", so the
         // timestamp header is part of the signed message and has to be passed
         // through — see ZoomService::verifyWebhookSignature.
@@ -38,6 +27,24 @@ class ZoomWebhookController extends Controller
         }
 
         $event = $payload['event'] ?? '';
+
+        // Endpoint validation (the "Validate" button, then every 72 hours).
+        // Zoom sends {"event":"endpoint.url_validation","payload":{"plainToken":..}}
+        // and expects the token back with its HMAC within 3 seconds. This used
+        // to look for a top-level "endpoint_url_validation" key Zoom never
+        // sends, so validation always failed and no event was ever delivered.
+        // It runs after the signature check (Zoom signs this request too):
+        // answering unsigned callers would hand out HMACs of any string under
+        // the same secret that signs real events.
+        if ($event === 'endpoint.url_validation') {
+            $plainToken = (string) ($payload['payload']['plainToken'] ?? '');
+
+            return response()->json([
+                'plainToken' => $plainToken,
+                'encryptedToken' => hash_hmac('sha256', $plainToken, (string) config('services.zoom.webhook_secret')),
+            ]);
+        }
+
         $object = $payload['payload']['object'] ?? [];
 
         Log::info('Zoom webhook received', ['event' => $event, 'meeting_id' => $object['id'] ?? null]);
