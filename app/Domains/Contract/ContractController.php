@@ -341,6 +341,15 @@ class ContractController extends Controller
     {
         $this->authorize('delete', $contract);
 
+        // Only a contract that was saved and never sent can be deleted. Once
+        // the client has seen it, it stays on record (archive it instead).
+        if ($contract->status !== 'draft') {
+            return response()->json([
+                'message' => 'العقد اتبعت للعميل، مينفعش يتمسح. الحذف متاح للعقد اللي لسه متبعتش بس.',
+                'code' => 'contract_not_deletable',
+            ], 422);
+        }
+
         $contract->delete();
 
         AuditLog::create([
