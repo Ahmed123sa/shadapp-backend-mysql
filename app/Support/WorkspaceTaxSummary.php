@@ -26,6 +26,7 @@ class WorkspaceTaxSummary
 
         $total = (float) $contracts->sum('value');
         $tax = round((float) $contracts->sum(fn ($c) => $c->tax_amount), 2);
+        $conversion = round((float) $contracts->sum(fn ($c) => $c->conversion_amount ?? 0), 2);
         $percentages = $contracts->map(fn ($c) => $c->tax_percentage)->unique()->values();
 
         return [
@@ -36,7 +37,8 @@ class WorkspaceTaxSummary
                 ? (float) $percentages->first()
                 : (float) ($workspace->client?->client_type === 'business' ? ($workspace->client->tax_percentage ?? 0) : 0),
             'tax_amount' => $tax,
-            'grand_total' => $total + $tax,
+            'conversion_total' => $conversion,
+            'grand_total' => round($total + $conversion + $tax, 2),
             'contracts' => $contracts->map(fn ($c) => [
                 'id' => $c->id,
                 'title' => $c->title,
@@ -46,7 +48,11 @@ class WorkspaceTaxSummary
                 'ads_percentage' => $c->ads_percentage,
                 'ads_amount' => $c->ads_amount,
                 'ads_budget' => $c->ads_budget,
+                'conversion_percentage' => $c->conversion_percentage,
+                'conversion_amount' => $c->conversion_amount,
+                'tax_excluded' => (bool) $c->tax_excluded,
                 'total' => $c->total_with_tax,
+                'total_due' => $c->total_due,
             ])->values()->all(),
         ];
     }

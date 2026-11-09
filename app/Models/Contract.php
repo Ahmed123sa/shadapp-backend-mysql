@@ -12,12 +12,12 @@ class Contract extends Model
     use HasFactory;
 
     protected $fillable = [
-        'workspace_id', 'title', 'contract_type', 'status', 'edit_reason', 'value', 'currency', 'tax_percentage', 'ads_percentage', 'start_date', 'end_date',
+        'workspace_id', 'title', 'contract_type', 'status', 'edit_reason', 'value', 'currency', 'tax_percentage', 'ads_percentage', 'conversion_percentage', 'tax_excluded', 'start_date', 'end_date',
         'pdf_url', 'client_signed_at', 'client_signature_data', 'company_signed_at', 'company_signature_data', 'company_signature_type',
         'archived_at', 'created_by',
     ];
 
-    protected $appends = ['tax_amount', 'total_with_tax', 'ads_amount', 'ads_budget'];
+    protected $appends = ['tax_amount', 'total_with_tax', 'ads_amount', 'ads_budget', 'conversion_amount', 'total_due'];
 
     protected function casts(): array
     {
@@ -26,6 +26,8 @@ class Contract extends Model
             'currency' => 'string',
             'tax_percentage' => 'float',
             'ads_percentage' => 'float',
+            'conversion_percentage' => 'float',
+            'tax_excluded' => 'boolean',
             'client_signed_at' => 'datetime',
             'company_signed_at' => 'datetime',
             'archived_at' => 'datetime',
@@ -77,6 +79,10 @@ class Contract extends Model
 
     public function getTaxAmountAttribute(): float
     {
+        if ($this->attributes['tax_excluded'] ?? false) {
+            return 0.0;
+        }
+
         return round($this->taxableAmount() * $this->effectiveTaxPercentage() / 100, 2);
     }
 
@@ -103,6 +109,25 @@ class Contract extends Model
         $amount = $this->ads_amount;
 
         return $amount === null ? null : round((float) $this->value - $amount, 2);
+    }
+
+    /**
+     * Dollar-conversion fee: a share of the ad budget, added on top of the
+     * contract value and never taxed. Only an ads contract with a percentage
+     * above zero has one; otherwise null.
+     */
+    public function getConversionAmountAttribute(): ?float
+    {
+        $pct = (float) ($this->attributes['conversion_percentage'] ?? 0);
+        $budget = $this->ads_budget;
+
+        return ($budget === null || $pct <= 0) ? null : round($budget * $pct / 100, 2);
+    }
+
+    /** Everything the client owes for this contract: value + conversion fee + tax. */
+    public function getTotalDueAttribute(): float
+    {
+        return round((float) $this->value + (float) ($this->conversion_amount ?? 0) + $this->tax_amount, 2);
     }
 
     public function workspace(): BelongsTo

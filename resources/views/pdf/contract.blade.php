@@ -28,14 +28,19 @@
         <p><strong>العميل:</strong> {{ $client->company_name }}</p>
         <p><strong>مدير الحساب:</strong> {{ $manager->name ?? '' }}</p>
         @if($contract->value > 0)
-        <p><strong>قيمة العقد:</strong> {{ number_format($contract->value, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
+        <p><strong>قيمة العقد{{ $contract->conversion_amount !== null ? ' (غير شامل رسوم التحويل)' : '' }}:</strong> {{ number_format($contract->value, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
         @if($contract->ads_percentage !== null)
         <p><strong>نسبة إدارة الإعلانات ({{ rtrim(rtrim(number_format($contract->ads_percentage, 2, '.', ''), '0'), '.') }}%):</strong> {{ number_format($contract->ads_amount, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
         <p><strong>ميزانية الإعلانات:</strong> {{ number_format($contract->ads_budget, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
         @endif
+        @if($contract->conversion_amount !== null)
+        <p><strong>رسوم التحويل الدولاري ({{ rtrim(rtrim(number_format($contract->conversion_percentage, 2, '.', ''), '0'), '.') }}% من ميزانية الإعلانات):</strong> {{ number_format($contract->conversion_amount, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
+        @endif
         @if($taxPercentage > 0)
         <p><strong>الضريبة المضافة ({{ $taxPercentage }}%{{ $contract->ads_percentage !== null ? ' على نسبة إدارة الإعلانات' : '' }}):</strong> {{ number_format($taxAmount, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
-        <p><strong>الإجمالي شامل الضريبة:</strong> {{ number_format($contract->value + $taxAmount, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
+        @endif
+        @if($taxPercentage > 0 || $contract->conversion_amount !== null)
+        <p><strong>الإجمالي المستحق:</strong> {{ number_format($contract->value + ($contract->conversion_amount ?? 0) + $taxAmount, 2) }} {{ $currencyLabel ?? 'ر.س' }}</p>
         @endif
         @endif
         @if($contract->start_date)

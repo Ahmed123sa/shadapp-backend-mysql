@@ -24,7 +24,7 @@ class ContractPdfService
         $requiredDocs = $contract->requiredDocuments()->get();
 
         $contract->setRelation('workspace', $contract->workspace);
-        $taxPercentage = $contract->value > 0 ? $contract->tax_percentage : 0;
+        $taxPercentage = ($contract->value > 0 && ! $contract->tax_excluded) ? $contract->tax_percentage : 0;
         $taxAmount = $contract->value > 0 ? $contract->tax_amount : 0;
 
         $currency = $contract->currency ?: 'SAR';

@@ -18,6 +18,8 @@ class UpdateContractRequest extends FormRequest
             'title' => 'string|max:255',
             'value' => 'nullable|numeric|min:0',
             'ads_percentage' => 'nullable|numeric|min:0.01|max:100',
+            'conversion_percentage' => 'nullable|numeric|min:0|max:100',
+            'tax_excluded' => 'nullable|boolean',
             'currency' => 'nullable|string|max:10',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',

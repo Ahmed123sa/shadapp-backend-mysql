@@ -9,6 +9,9 @@
 <p>نسبة إدارة الإعلانات ({{ rtrim(rtrim(number_format($contract->ads_percentage, 2, '.', ''), '0'), '.') }}%): {{ number_format($contract->ads_amount, 2) }} ر.س</p>
 <p>ميزانية الإعلانات: {{ number_format($contract->ads_budget, 2) }} ر.س</p>
 @endif
+@if($contract->conversion_amount !== null)
+<p>رسوم التحويل الدولاري ({{ rtrim(rtrim(number_format($contract->conversion_percentage, 2, '.', ''), '0'), '.') }}%): {{ number_format($contract->conversion_amount, 2) }} ر.س (تُضاف على قيمة العقد)</p>
+@endif
 @if($contract->requiredDocuments->count() > 0)
 <h3 style="margin-top:20px;">المستندات المطلوبة</h3>
 <ul>
@@ -28,6 +31,9 @@
 @if($contract->ads_percentage !== null)
 <p>Ads management fee ({{ rtrim(rtrim(number_format($contract->ads_percentage, 2, '.', ''), '0'), '.') }}%): {{ number_format($contract->ads_amount, 2) }} SAR</p>
 <p>Ad budget: {{ number_format($contract->ads_budget, 2) }} SAR</p>
+@endif
+@if($contract->conversion_amount !== null)
+<p>Dollar conversion fee ({{ rtrim(rtrim(number_format($contract->conversion_percentage, 2, '.', ''), '0'), '.') }}%): {{ number_format($contract->conversion_amount, 2) }} SAR (added on top of the contract value)</p>
 @endif
 @if($contract->requiredDocuments->count() > 0)
 <h3 style="margin-top:20px;">Required documents</h3>

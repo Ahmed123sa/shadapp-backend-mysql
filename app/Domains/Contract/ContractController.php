@@ -192,6 +192,12 @@ class ContractController extends Controller
                 : ($request->contract_type ?? 'main'),
             'value' => $request->value ?? 0,
             'ads_percentage' => $request->ads_percentage,
+            // The conversion fee is a share of the ad budget, so it only exists
+            // on an ads contract and only when above zero.
+            'conversion_percentage' => $request->ads_percentage !== null && (float) $request->conversion_percentage > 0
+                ? $request->conversion_percentage
+                : null,
+            'tax_excluded' => (bool) $request->tax_excluded,
             'currency' => $request->currency ?? 'SAR',
             'start_date' => $request->start_date,
             'end_date' => $request->end_date,
@@ -271,10 +277,22 @@ class ContractController extends Controller
             ], 422);
         }
 
-        $contract->update(array_merge(
-            $request->only(['title', 'value', 'ads_percentage', 'currency', 'start_date', 'end_date', 'contract_type']),
-            ['pdf_url' => null],
-        ));
+        $fields = $request->only(['title', 'value', 'ads_percentage', 'conversion_percentage', 'tax_excluded', 'currency', 'start_date', 'end_date', 'contract_type']);
+
+        if (array_key_exists('tax_excluded', $fields)) {
+            $fields['tax_excluded'] = (bool) $fields['tax_excluded'];
+        }
+
+        // Keep the conversion fee consistent with the ads setting: dropping
+        // the ads split drops the fee with it, and 0 means none.
+        $adsAfter = array_key_exists('ads_percentage', $fields) ? $fields['ads_percentage'] : $contract->getRawOriginal('ads_percentage');
+        if ($adsAfter === null) {
+            $fields['conversion_percentage'] = null;
+        } elseif (array_key_exists('conversion_percentage', $fields) && (float) $fields['conversion_percentage'] <= 0) {
+            $fields['conversion_percentage'] = null;
+        }
+
+        $contract->update(array_merge($fields, ['pdf_url' => null]));
 
         if ($request->has('clauses')) {
             $contract->clauses()->delete();
