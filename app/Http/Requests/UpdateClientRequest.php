@@ -26,7 +26,7 @@ class UpdateClientRequest extends FormRequest
             'industry' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
             'address' => 'nullable|string|max:1000',
-            'maps_url' => 'nullable|string|max:1000',
+            'maps_url' => 'nullable|string|max:1000|url:https',
             'date_of_birth' => 'nullable|date',
             'status' => 'in:active,inactive,blocked',
             'client_type' => 'nullable|string|in:business,individual',

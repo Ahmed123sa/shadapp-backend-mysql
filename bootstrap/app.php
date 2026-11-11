@@ -21,6 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
     // registration without removing any listener.
     ->withEvents(discover: false)
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->replace(
+            \Illuminate\Http\Middleware\TrustProxies::class,
+            \App\Http\Middleware\TrustProxies::class,
+        );
         $middleware->api(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,
             \App\Http\Middleware\Localization::class,

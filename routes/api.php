@@ -31,8 +31,8 @@ use App\Http\Controllers\ZoomWebhookController;
 use Illuminate\Support\Facades\Route;
 // Public auth routes
 Route::post('/auth/register', [AuthController::class, 'registerSuperAdmin'])->middleware('throttle:5,1');
-Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
-Route::post('/auth/client/login', [AuthController::class, 'clientLogin'])->middleware('throttle:5,1');
+Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login-staff');
+Route::post('/auth/client/login', [AuthController::class, 'clientLogin'])->middleware('throttle:login-client');
 // A second sub-user login route (/auth/sub-user/login) used to live here.
 // Nothing in the dashboard, mobile app, or tests ever called it, and unlike
 // this route it never checked whether the parent client was archived — an

@@ -140,6 +140,10 @@ return [
         ),
     ],
 
+    // Comma-separated IPs/CIDRs allowed to supply X-Forwarded-For in addition
+    // to loopback (127.0.0.1, ::1) and the server's own SERVER_ADDR.
+    'trusted_proxies' => env('TRUSTED_PROXIES', ''),
+
     /*
     |--------------------------------------------------------------------------
     | Maintenance Mode Driver

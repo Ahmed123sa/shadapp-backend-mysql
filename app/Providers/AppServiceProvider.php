@@ -46,6 +46,12 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute((int) config('app.api_rate_limit', 300))->by($key);
         });
 
+        // Separate limiters per login endpoint so the mobile app's fallback
+        // probe on /auth/login before /auth/client/login doesn't eat into the
+        // client's /auth/client/login budget.
+        RateLimiter::for('login-staff', fn (Request $request) => $this->loginLimits($request, 'staff'));
+        RateLimiter::for('login-client', fn (Request $request) => $this->loginLimits($request, 'client'));
+
         // MySQL/MariaDB with utf8mb4 needs 4 bytes per character. A varchar(255)
         // unique/index column (e.g. users.email, clients.email) then requires a
         // key prefix longer than some MySQL/MariaDB builds allow, causing
@@ -74,5 +80,26 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(ClientCreated::class, [SendClientWelcomeEmail::class, 'handleClientCreated']);
 
         Meeting::observe(MeetingObserver::class);
+    }
+
+    /**
+     * @return array<int, Limit>
+     */
+    private function loginLimits(Request $request, string $bucket): array
+    {
+        $email = strtolower(trim((string) $request->input('email', '')));
+        $ip = (string) $request->ip();
+
+        if ($email === '') {
+            return [
+                Limit::perMinute(5)->by("login:{$bucket}:ip:{$ip}"),
+            ];
+        }
+
+        return [
+            Limit::perMinute(5)->by("login:{$bucket}:email-ip:{$email}|{$ip}"),
+            Limit::perMinutes(10, 10)->by("login:{$bucket}:email:{$email}"),
+            Limit::perMinute(30)->by("login:{$bucket}:ip:{$ip}"),
+        ];
     }
 }

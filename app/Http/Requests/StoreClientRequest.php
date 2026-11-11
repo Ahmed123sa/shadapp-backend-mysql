@@ -31,7 +31,7 @@ class StoreClientRequest extends FormRequest
             'tax_percentage' => 'nullable|numeric|between:0,100',
             'notes' => 'nullable|string',
             'address' => 'nullable|string|max:1000',
-            'maps_url' => 'nullable|string|max:1000',
+            'maps_url' => 'nullable|string|max:1000|url:https',
             'date_of_birth' => 'nullable|date',
             'send_email' => 'boolean',
         ];
