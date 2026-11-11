@@ -11,13 +11,16 @@ use Illuminate\Http\Request;
  * TRUSTED_PROXIES entry. Direct mobile/API callers connect straight to nginx,
  * so their REMOTE_ADDR is never in the trusted set and any spoofed
  * X-Forwarded-For header they send is ignored.
+ *
+ * Only HEADER_X_FORWARDED_FOR is trusted: api.shadmanagement.co is served
+ * directly by nginx+PHP-FPM over HTTPS, whereas Next.js SSR proxies browser
+ * requests from shadmanagement.co. Trusting X-Forwarded-Host/Proto/Port would
+ * make URL::temporarySignedRoute() emit file links pointing at the frontend
+ * host instead of the API host.
  */
 class TrustProxies extends BaseTrustProxies
 {
-    protected $headers = Request::HEADER_X_FORWARDED_FOR
-        | Request::HEADER_X_FORWARDED_HOST
-        | Request::HEADER_X_FORWARDED_PORT
-        | Request::HEADER_X_FORWARDED_PROTO;
+    protected $headers = Request::HEADER_X_FORWARDED_FOR;
 
     protected function setTrustedProxyIpAddresses(Request $request): void
     {

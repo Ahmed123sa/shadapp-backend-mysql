@@ -207,4 +207,26 @@ class LoginRateLimitTest extends TestCase
                 'maps_url' => 'https://maps.app.goo.gl/example123',
             ])->assertOk();
     }
+
+    public function test_trusted_proxy_does_not_override_api_host_or_scheme_for_signed_file_urls(): void
+    {
+        $manager = User::factory()->create([
+            'role' => User::ROLE_ACCOUNT_MANAGER,
+            'avatar_url' => '/storage/avatars/manager.png',
+        ]);
+
+        $response = $this->actingAs($manager, 'sanctum')
+            ->withServerVariables(['REMOTE_ADDR' => '127.0.0.1'])
+            ->withHeaders([
+                'X-Forwarded-For' => '203.0.113.10',
+                'X-Forwarded-Host' => 'shadmanagement.co',
+                'X-Forwarded-Proto' => 'http',
+                'X-Forwarded-Port' => '3000',
+            ])
+            ->getJson('https://api.shadmanagement.co/api/auth/me')
+            ->assertOk();
+
+        $avatarUrl = (string) $response->json('user.avatar_url');
+        $this->assertStringStartsWith('https://api.shadmanagement.co/files/avatars/manager.png', $avatarUrl);
+    }
 }
