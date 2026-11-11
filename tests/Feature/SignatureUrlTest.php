@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Client;
 use App\Models\User;
+use App\Support\SignatureValue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -57,5 +58,56 @@ class SignatureUrlTest extends TestCase
         $data = $client->toArray();
         $this->assertSame('http://localhost/storage/signatures/c.png', $data['signature_data']);
         $this->assertStringContainsString('/files/signatures/c.png', $data['signature_url']);
+    }
+
+    public function test_live_relative_signature_path_gets_signed_url_for_supported_image_extensions(): void
+    {
+        foreach (['png', 'jpg', 'jpeg', 'webp'] as $ext) {
+            $path = "/storage/signatures/live-sig.{$ext}";
+            $this->assertTrue(SignatureValue::isImage($path), "Expected {$path} to be treated as an image");
+
+            $client = Client::factory()->create(['signature_data' => $path]);
+            $url = $client->toArray()['signature_url'];
+
+            $this->assertNotNull($url);
+            $this->assertStringContainsString("/files/signatures/live-sig.{$ext}", $url);
+            $this->assertStringContainsString('signature=', $url);
+        }
+    }
+
+    public function test_non_signature_storage_path_never_gets_a_signed_url(): void
+    {
+        $dangerousValues = [
+            '/storage/contracts/contract-1-signed.pdf',
+            '/storage/payments/proof-1.png',
+            '/storage/signatures/../contracts/contract-1-signed.pdf',
+            '/storage/signatures/sub/nested.png',
+            '/storage/signatures/evil.svg',
+            '/storage/signatures/shell.php',
+            'https://evil.example.com/storage/signatures/c.png',
+            '/storage/signatures/c.png?foo=bar',
+        ];
+
+        foreach ($dangerousValues as $value) {
+            $this->assertFalse(SignatureValue::isImage($value), "Expected {$value} to be rejected");
+            $this->assertNull(SignatureValue::diskPath($value), "Expected null diskPath for {$value}");
+
+            $client = Client::factory()->create(['signature_data' => $value]);
+            $this->assertNull($client->toArray()['signature_url'], "Expected null signature_url for {$value}");
+        }
+    }
+
+    public function test_disk_path_resolves_real_signature_image_and_rejects_outside_paths(): void
+    {
+        Storage::disk('public')->put('signatures/valid.png', 'png-bytes');
+        Storage::disk('public')->put('contracts/contract-1-signed.pdf', 'pdf-bytes');
+
+        $resolved = SignatureValue::diskPath('/storage/signatures/valid.png');
+        $this->assertNotNull($resolved);
+        $this->assertFileExists($resolved);
+
+        $this->assertNull(SignatureValue::diskPath('/storage/contracts/contract-1-signed.pdf'));
+        $this->assertNull(SignatureValue::diskPath('/storage/signatures/../contracts/contract-1-signed.pdf'));
+        $this->assertNull(SignatureValue::diskPath('/storage/signatures/missing.png'));
     }
 }

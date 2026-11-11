@@ -9,6 +9,7 @@ use App\Models\Workspace;
 use App\Events\ClientCreated;
 use App\Http\Requests\StoreClientRequest;
 use App\Http\Requests\UpdateClientRequest;
+use App\Rules\TypedSignature;
 use App\Support\UploadRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -276,8 +277,8 @@ class ClientController extends Controller
             $path = $request->file('signature_image')->store('signatures', 'public');
             $signatureData = Storage::url($path);
         } else {
-            $request->validate(['signature' => 'required|string']);
-            $signatureData = $request->signature;
+            $request->validate(['signature' => ['required', 'string', new TypedSignature()]]);
+            $signatureData = trim($request->signature);
         }
 
         $client->update([

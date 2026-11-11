@@ -16,6 +16,8 @@ use App\Events\ContractStatusChanged;
 use App\Events\WorkspaceStatusChanged;
 use App\Http\Requests\StoreContractRequest;
 use App\Http\Requests\UpdateContractRequest;
+use App\Rules\TypedSignature;
+use App\Support\SignatureValue;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
@@ -513,7 +515,7 @@ class ContractController extends Controller
         $this->authorize('companyApprove', $contract);
 
         $request->validate([
-            'signature' => 'nullable|string',
+            'signature' => ['nullable', 'string', new TypedSignature()],
             'use_saved_signature' => 'nullable|boolean',
         ]);
 
@@ -529,7 +531,7 @@ class ContractController extends Controller
         } elseif ($request->boolean('use_saved_signature')) {
             $signature = $approver->signature_data;
         } elseif ($request->filled('signature')) {
-            $signature = $request->signature;
+            $signature = trim($request->signature);
         } else {
             $signature = $approver->signature_data;
         }
@@ -556,7 +558,7 @@ class ContractController extends Controller
             ], 422);
         }
 
-        $sigType = (str_starts_with($signature, '/storage/') || str_starts_with($signature, 'http') || str_starts_with($signature, '/api/storage/')) ? 'image' : 'text';
+        $sigType = SignatureValue::isImage($signature) ? 'image' : 'text';
 
         $workspace = $contract->workspace->fresh();
         $wasInactive = $workspace->status !== 'active';
