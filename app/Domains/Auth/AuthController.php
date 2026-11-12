@@ -9,6 +9,7 @@ use App\Models\Client;
 use App\Models\SubUser;
 use App\Http\Requests\LoginRequest;
 use App\Rules\TypedSignature;
+use App\Support\LoginThrottle;
 use App\Support\UploadRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -128,9 +129,20 @@ class AuthController extends Controller
     public function login(LoginRequest $request): JsonResponse
     {
         $email = strtolower(trim($request->email));
+
+        // Checked before the password, so a locked account refuses even the
+        // right one and the lock can't be used to keep guessing.
+        LoginThrottle::ensureNotLocked($request, 'staff');
+
         $user = User::where('email', $email)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
+            // The mobile app's staff-endpoint probe for a client email is
+            // normal usage, not a failed guess (see recordFailedLogin).
+            if ($user || !$this->emailBelongsToClientSide($email)) {
+                LoginThrottle::fail($request, 'staff');
+            }
+
             // The response is identical either way on purpose (so this
             // endpoint can't be used to find out which emails are
             // registered); the distinction is kept server-side only,
@@ -166,6 +178,8 @@ class AuthController extends Controller
             return $token;
         });
 
+        LoginThrottle::clear($request, 'staff');
+
         return response()->json([
             'token' => $token,
             'user' => array_merge(
@@ -188,6 +202,8 @@ class AuthController extends Controller
 
         $email = strtolower(trim($request->email));
 
+        LoginThrottle::ensureNotLocked($request, 'client');
+
         // 1. Try Client first
         $client = Client::where('email', $email)->first();
         if ($client && Hash::check($request->password, $client->password)) {
@@ -208,6 +224,8 @@ class AuthController extends Controller
 
                 return $token;
             });
+
+            LoginThrottle::clear($request, 'client');
 
             return response()->json([
                 'token' => $token,
@@ -243,6 +261,8 @@ class AuthController extends Controller
                 return $token;
             });
 
+            LoginThrottle::clear($request, 'client');
+
             return response()->json([
                 'token' => $token,
                 'login_type' => 'sub_user',
@@ -265,6 +285,8 @@ class AuthController extends Controller
         // Reached when neither a Client nor a SubUser matched on both email
         // and password. Both lookups above are already in scope, so the
         // reason costs nothing extra to determine.
+        LoginThrottle::fail($request, 'client');
+
         $this->recordFailedLogin(
             $request,
             LoginAttempt::ENDPOINT_CLIENT,

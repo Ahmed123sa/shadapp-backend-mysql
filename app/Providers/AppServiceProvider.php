@@ -96,9 +96,11 @@ class AppServiceProvider extends ServiceProvider
             ];
         }
 
+        // Per-email limits count FAILED attempts only, so they live in
+        // App\Support\LoginThrottle (called from AuthController), not here:
+        // a route throttle counts every request, successful sign-ins too.
+        // What stays here is the plain per-IP cap on any request.
         return [
-            Limit::perMinute(5)->by("login:{$bucket}:email-ip:{$email}|{$ip}"),
-            Limit::perMinutes(10, 10)->by("login:{$bucket}:email:{$email}"),
             Limit::perMinute(30)->by("login:{$bucket}:ip:{$ip}"),
         ];
     }
